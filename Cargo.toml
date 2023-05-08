@@ -1,0 +1,32 @@
+[package]
+name = "ctrader-fix"
+version = "0.1.0"
+authors = ["Jaemin Kim <geminik23@gmail.com>"]
+edition = "2021"
+description = ""
+license = "MIT"
+readme = "README.md"
+# documentation = "https://docs.rs/"
+repository = "https://github.com/geminik23/ctrader-fix"
+
+
+
+[dependencies]
+async-std = {version="1.12", features = ["attributes", "unstable", "tokio1"]}
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1.5"
+num_enum = "0.6"
+log = "0.4"
+
+
+
+[dev-dependencies]
+dotenv = "0.15"
+env_logger = "0.10"
+
+[lib]
+name = "ctrader_fix"
+
+
