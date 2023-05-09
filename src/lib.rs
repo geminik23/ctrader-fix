@@ -1,7 +1,9 @@
 mod models;
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use async_std::io::{BufReader, BufWriter};
+use async_std::sync::Mutex;
 use models::{Config, HeartbeatReq, LogonReq, RequestMessage, SubID};
 use models::{LogoutReq, ResponseMessage};
 
@@ -17,36 +19,54 @@ pub struct Socket {
 
 pub struct FixApi {
     config: Config,
-    qstream: Option<Arc<TcpStream>>,
-    qseq: u32,
-    tstream: Option<Arc<TcpStream>>,
-    tseq: u32,
-
+    quote: StreamData,
+    trade: StreamData,
     delimiter: String,
 }
 
+pub struct StreamData {
+    stream: Option<Arc<TcpStream>>,
+    seq: u32,
+}
+
 impl FixApi {
-    pub fn new(host: String, login: String, password: String, broker: String) -> Self {
+    pub fn new(
+        host: String,
+        login: String,
+        password: String,
+        broker: String,
+        heartbeat_interval: Option<u32>,
+    ) -> Self {
         Self {
-            config: Config::new(host, login, password, broker, 30),
-            qstream: None,
-            tstream: None,
-            qseq: 1,
-            tseq: 1,
+            config: Config::new(
+                host,
+                login,
+                password,
+                broker,
+                heartbeat_interval.unwrap_or(30),
+            ),
+            quote: StreamData {
+                stream: None,
+                seq: 1,
+            },
+            trade: StreamData {
+                stream: None,
+                seq: 1,
+            },
             delimiter: "\u{1}".into(),
         }
     }
 
     pub async fn disconnect(&mut self) -> std::io::Result<()> {
-        if let Some(stream) = &mut self.qstream {
+        if let Some(stream) = &mut self.quote.stream {
             stream.shutdown(std::net::Shutdown::Both)?;
         }
-        if let Some(stream) = &mut self.tstream {
+        if let Some(stream) = &mut self.trade.stream {
             stream.shutdown(std::net::Shutdown::Both)?;
         }
 
-        self.qstream = None;
-        self.tstream = None;
+        self.quote.stream = None;
+        self.trade.stream = None;
 
         Ok(())
     }
@@ -55,8 +75,8 @@ impl FixApi {
         let mut qsocket = Socket::connect(self.config.host.as_str(), 5201, &self.delimiter).await?;
         let mut tsocket = Socket::connect(self.config.host.as_str(), 5202, &self.delimiter).await?;
 
-        self.qstream = Some(qsocket.stream.clone());
-        self.tstream = Some(tsocket.stream.clone());
+        self.quote.stream = Some(qsocket.stream.clone());
+        self.trade.stream = Some(tsocket.stream.clone());
 
         let _qhandle = {
             task::spawn(async move {
@@ -80,10 +100,10 @@ impl FixApi {
     ) -> std::io::Result<()> {
         match sub_id {
             SubID::QUOTE => {
-                let req = req.build(sub_id, self.qseq, &self.delimiter, &self.config);
+                let req = req.build(sub_id, self.quote.seq, &self.delimiter, &self.config);
                 println!("{:?}", req);
-                self.qseq += 1;
-                if let Some(qstream) = self.qstream.as_mut() {
+                self.quote.seq += 1;
+                if let Some(qstream) = self.quote.stream.as_mut() {
                     let mut writer = BufWriter::new(qstream.as_ref());
                     writer.write_all(req.as_bytes()).await?;
                     writer.flush().await?;
@@ -91,9 +111,9 @@ impl FixApi {
                 // TODO failed? then close?
             }
             SubID::TRADE => {
-                let req = req.build(sub_id, self.tseq, &self.delimiter, &self.config);
-                self.tseq += 1;
-                if let Some(tstream) = self.tstream.as_mut() {
+                let req = req.build(sub_id, self.trade.seq, &self.delimiter, &self.config);
+                self.trade.seq += 1;
+                if let Some(tstream) = self.trade.stream.as_mut() {
                     let mut writer = BufWriter::new(tstream.as_ref());
                     writer.write_all(req.as_bytes()).await?;
                     writer.flush().await?;
@@ -103,6 +123,16 @@ impl FixApi {
         }
 
         Ok(())
+    }
+
+    //
+    // handle messages
+    //
+
+    pub fn handle_message(&self, res: ResponseMessage) {
+        // match res.get_message_type() {
+        //     _ => {}
+        // }
     }
 
     //
@@ -142,6 +172,7 @@ impl Socket {
         let stream = TcpStream::connect(addr).await?;
         Ok(Socket {
             stream: Arc::new(stream),
+            // res_msg: Arc::new(Mutex::new(VecDeque::new())),
             msg_buffer: String::new(),
             delimiter: delimiter.into(),
         })

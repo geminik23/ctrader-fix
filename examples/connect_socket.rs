@@ -13,7 +13,7 @@ async fn main() -> std::io::Result<()> {
     let password = env::var("CTRADER_FIX_PASSWORD").unwrap();
     let broker = env::var("CTRADER_FIX_BROKER").unwrap();
 
-    let mut fix = FixApi::new(host, username, password, broker);
+    let mut fix = FixApi::new(host, username, password, broker, None);
     fix.connect().await?;
 
     fix.logon().await?;
