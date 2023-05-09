@@ -41,9 +41,11 @@ pub enum Field {
     CheckSum = 10,
     ClOrdId = 11,
     CumQty = 14,
+    EndSeqNo = 16,
     OrdQty = 32,
     MsgSeqNum = 34,
     MsgType = 35,
+    NewSeqNo = 36,
     OrderID = 37,
     OrderQty = 38,
     OrdStatus = 39,
@@ -66,11 +68,13 @@ pub enum Field {
     OrdRejReason = 103,
     HeartBtInt = 108,
     TestReqID = 112,
+    GapFillFlag = 123,
     ExpireTime = 126,
     ResetSeqNumFlag = 141,
     NoRelatedSym = 146,
     ExecType = 150,
     LeavesQty = 151,
+    IssueDate = 225,
     MDReqID = 262,
     SubscriptionRequestType = 263,
     MarketDepth = 264,
@@ -148,18 +152,30 @@ impl FromStr for SubID {
 }
 
 #[repr(u32)]
-#[derive(Debug, PartialEq, TryFromPrimitive)]
+#[derive(Debug, PartialEq, TryFromPrimitive, Clone, Copy)]
 pub enum Side {
     BUY = 1,
     SELL = 2,
 }
 
+impl Default for Side {
+    fn default() -> Self {
+        Side::BUY
+    }
+}
+
 #[repr(u32)]
-#[derive(Debug, PartialEq, TryFromPrimitive)]
+#[derive(Debug, PartialEq, TryFromPrimitive, Clone, Copy)]
 pub enum OrderType {
     MARKET = 1,
     LIMIT = 2,
     STOP = 3,
+}
+
+impl Default for OrderType {
+    fn default() -> Self {
+        OrderType::MARKET
+    }
 }
 
 // Response
@@ -301,6 +317,19 @@ impl RequestMessage for LogonReq {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct LogoutReq;
+
+impl RequestMessage for LogoutReq {
+    fn get_body(&self, _delimiter: &str, _config: &Config) -> Option<String> {
+        None
+    }
+
+    fn get_message_type(&self) -> &str {
+        "5"
+    }
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct HeartbeatReq {
     test_req_id: Option<String>,
 }
@@ -320,5 +349,462 @@ impl RequestMessage for HeartbeatReq {
 
     fn get_message_type(&self) -> &str {
         "0"
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TestReq {
+    test_req_id: String,
+}
+
+impl TestReq {
+    pub fn new(test_req_id: String) -> Self {
+        Self { test_req_id }
+    }
+}
+
+impl RequestMessage for TestReq {
+    fn get_body(&self, _delimiter: &str, _config: &Config) -> Option<String> {
+        Some(format_field(Field::TestReqID, &self.test_req_id))
+    }
+
+    fn get_message_type(&self) -> &str {
+        "1"
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ResendReq {
+    begin_seq_no: u32,
+    end_seq_no: u32,
+}
+
+impl ResendReq {
+    pub fn new(begin_seq_no: u32, end_seq_no: u32) -> Self {
+        Self {
+            begin_seq_no,
+            end_seq_no,
+        }
+    }
+}
+
+impl RequestMessage for ResendReq {
+    fn get_body(&self, delimiter: &str, _config: &Config) -> Option<String> {
+        let fields = vec![
+            format_field(Field::BeginSeqNo, self.begin_seq_no),
+            format_field(Field::EndSeqNo, self.end_seq_no),
+        ];
+        Some(fields.join(delimiter))
+    }
+
+    fn get_message_type(&self) -> &str {
+        "2"
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SequenceReset {
+    gap_fill_flag: Option<bool>,
+    new_seq_no: u32,
+}
+
+impl SequenceReset {
+    pub fn new(gap_fill_flag: Option<bool>, new_seq_no: u32) -> Self {
+        Self {
+            gap_fill_flag,
+            new_seq_no,
+        }
+    }
+}
+
+impl RequestMessage for SequenceReset {
+    fn get_body(&self, delimiter: &str, _config: &Config) -> Option<String> {
+        let mut fields = vec![format_field(Field::NewSeqNo, self.new_seq_no)];
+
+        if let Some(gap_fill_flag) = self.gap_fill_flag {
+            fields.push(format_field(Field::GapFillFlag, gap_fill_flag));
+        }
+
+        Some(fields.join(delimiter))
+    }
+
+    fn get_message_type(&self) -> &str {
+        "4"
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct MarketDataReq {
+    md_req_id: String,
+    subscription_req_type: char,
+    market_depth: u32,
+    md_update_type: Option<u32>,
+    no_md_entry_types: u32,
+    md_entry_type: char,
+    no_related_sym: u32,
+    symbol: String,
+}
+
+impl MarketDataReq {
+    pub fn new(
+        md_req_id: String,
+        subscription_req_type: char,
+        market_depth: u32,
+        md_update_type: Option<u32>,
+        no_md_entry_types: u32,
+        md_entry_type: char,
+        no_related_sym: u32,
+        symbol: String,
+    ) -> Self {
+        Self {
+            md_req_id,
+            subscription_req_type,
+            market_depth,
+            md_update_type,
+            no_md_entry_types,
+            md_entry_type,
+            no_related_sym,
+            symbol,
+        }
+    }
+}
+
+impl RequestMessage for MarketDataReq {
+    fn get_body(&self, delimiter: &str, _config: &Config) -> Option<String> {
+        let mut fields = vec![
+            format_field(Field::MDReqID, &self.md_req_id),
+            format_field(Field::SubscriptionRequestType, self.subscription_req_type),
+            format_field(Field::MarketDepth, self.market_depth),
+            format_field(Field::NoMDEntryTypes, self.no_md_entry_types),
+            format_field(Field::MDEntryType, self.md_entry_type),
+            format_field(Field::NoRelatedSym, self.no_related_sym),
+            format_field(Field::Symbol, &self.symbol),
+        ];
+
+        if let Some(md_update_type) = self.md_update_type {
+            fields.push(format_field(Field::MDUpdateType, md_update_type));
+        }
+
+        Some(fields.join(delimiter))
+    }
+
+    fn get_message_type(&self) -> &str {
+        "V"
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NewOrderSingleReq {
+    pub cl_ord_id: String,
+    pub symbol: String,
+    pub side: Side,
+    pub transact_time: Option<chrono::NaiveDateTime>,
+    pub order_qty: f64,
+    pub ord_type: OrderType,
+    pub price: Option<f64>,
+    pub stop_px: Option<f64>,
+    pub expire_time: Option<chrono::NaiveDateTime>,
+    pub pos_maint_rpt_id: Option<String>,
+    pub designation: Option<String>,
+}
+
+impl NewOrderSingleReq {
+    pub fn new(
+        cl_ord_id: String,
+        symbol: String,
+        side: Side,
+        transact_time: Option<chrono::NaiveDateTime>,
+        order_qty: f64,
+        ord_type: OrderType,
+        price: Option<f64>,
+        stop_px: Option<f64>,
+        expire_time: Option<chrono::NaiveDateTime>,
+        pos_maint_rpt_id: Option<String>,
+        designation: Option<String>,
+    ) -> Self {
+        Self {
+            cl_ord_id,
+            symbol,
+            side,
+            transact_time,
+            order_qty,
+            ord_type,
+            price,
+            stop_px,
+            expire_time,
+            pos_maint_rpt_id,
+            designation,
+        }
+    }
+}
+
+impl RequestMessage for NewOrderSingleReq {
+    fn get_body(&self, delimiter: &str, _config: &Config) -> Option<String> {
+        let mut fields = vec![
+            format_field(Field::ClOrdId, &self.cl_ord_id),
+            format_field(Field::Symbol, &self.symbol),
+            format_field(Field::Side, self.side as u32),
+            format_field(
+                Field::TransactTime,
+                self.transact_time.map_or_else(
+                    || Utc::now().format("%Y%m%d-%H:%M:%S").to_string(),
+                    |d| d.format("%Y%m%d-%H:%M:%S").to_string(),
+                ),
+            ),
+            format_field(Field::OrderQty, self.order_qty),
+            format_field(Field::OrdType, self.ord_type as u32),
+        ];
+
+        if let Some(price) = self.price {
+            fields.push(format_field(Field::Price, price));
+        }
+        if let Some(stop_px) = self.stop_px {
+            fields.push(format_field(Field::StopPx, stop_px));
+        }
+        if let Some(expire_time) = self.expire_time {
+            fields.push(format_field(
+                Field::ExpireTime,
+                expire_time.format("%Y%m%d-%H:%M:%S"),
+            ));
+        }
+        if let Some(pos_maint_rpt_id) = &self.pos_maint_rpt_id {
+            fields.push(format_field(Field::PosMaintRptID, pos_maint_rpt_id));
+        }
+        if let Some(designation) = &self.designation {
+            fields.push(format_field(Field::Designation, designation));
+        }
+
+        Some(fields.join(delimiter))
+    }
+
+    fn get_message_type(&self) -> &str {
+        "D"
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct OrderStatusReq {
+    pub cl_ord_id: String,
+    pub side: Option<Side>,
+}
+
+impl RequestMessage for OrderStatusReq {
+    fn get_body(&self, delimiter: &str, _config: &Config) -> Option<String> {
+        let mut fields = vec![format_field(Field::ClOrdId, &self.cl_ord_id)];
+
+        if let Some(side) = self.side {
+            fields.push(format_field(Field::Side, side as u32));
+        }
+
+        Some(fields.join(delimiter))
+    }
+
+    fn get_message_type(&self) -> &str {
+        "H"
+    }
+}
+
+impl OrderStatusReq {
+    pub fn new(cl_ord_id: String, side: Option<Side>) -> Self {
+        Self { cl_ord_id, side }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct OrderMassStatusReq {
+    pub mass_status_req_id: String,
+    pub mass_status_req_type: u32,
+    pub issue_date: Option<chrono::NaiveDateTime>,
+}
+
+impl RequestMessage for OrderMassStatusReq {
+    fn get_body(&self, delimiter: &str, _config: &Config) -> Option<String> {
+        let mut fields = vec![
+            format_field(Field::MassStatusReqID, &self.mass_status_req_id),
+            format_field(Field::MassStatusReqType, self.mass_status_req_type),
+        ];
+
+        if let Some(issue_date) = self.issue_date {
+            fields.push(format_field(
+                Field::IssueDate,
+                issue_date.format("%Y%m%d-%H:%M:%S"),
+            ));
+        }
+
+        Some(fields.join(delimiter))
+    }
+
+    fn get_message_type(&self) -> &str {
+        "AF"
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PositionsReq {
+    pub pos_req_id: String,
+    pub pos_maint_rpt_id: Option<String>,
+}
+
+impl PositionsReq {
+    pub fn new(pos_req_id: String, pos_maint_rpt_id: Option<String>) -> Self {
+        Self {
+            pos_req_id,
+            pos_maint_rpt_id,
+        }
+    }
+}
+
+impl RequestMessage for PositionsReq {
+    fn get_body(&self, delimiter: &str, _config: &Config) -> Option<String> {
+        let mut fields = vec![format_field(Field::PosReqID, &self.pos_req_id)];
+
+        if let Some(pos_maint_rpt_id) = &self.pos_maint_rpt_id {
+            fields.push(format_field(Field::PosMaintRptID, pos_maint_rpt_id));
+        }
+
+        Some(fields.join(delimiter))
+    }
+
+    fn get_message_type(&self) -> &str {
+        "AN"
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct OrderCancelReq {
+    pub orig_cl_ord_id: String,
+    pub order_id: Option<String>,
+    pub cl_ord_id: String,
+}
+impl OrderCancelReq {
+    pub fn new(orig_cl_ord_id: String, order_id: Option<String>, cl_ord_id: String) -> Self {
+        Self {
+            orig_cl_ord_id,
+            order_id,
+            cl_ord_id,
+        }
+    }
+}
+impl RequestMessage for OrderCancelReq {
+    fn get_body(&self, delimiter: &str, _config: &Config) -> Option<String> {
+        let mut fields = vec![
+            format_field(Field::OrigClOrdID, &self.orig_cl_ord_id),
+            format_field(Field::ClOrdId, &self.cl_ord_id),
+        ];
+
+        if let Some(order_id) = &self.order_id {
+            fields.push(format_field(Field::OrderID, order_id));
+        }
+
+        Some(fields.join(delimiter))
+    }
+
+    fn get_message_type(&self) -> &str {
+        "F"
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct OrderCancelReplaceReq {
+    pub orig_cl_ord_id: String,
+    pub order_id: Option<String>,
+    pub cl_ord_id: String,
+    pub order_qty: f64,
+    pub price: Option<f64>,
+    pub stop_px: Option<f64>,
+    pub expire_time: Option<chrono::NaiveDateTime>,
+}
+
+impl OrderCancelReplaceReq {
+    pub fn new(
+        orig_cl_ord_id: String,
+        order_id: Option<String>,
+        cl_ord_id: String,
+        order_qty: f64,
+        price: Option<f64>,
+        stop_px: Option<f64>,
+        expire_time: Option<chrono::NaiveDateTime>,
+    ) -> Self {
+        Self {
+            orig_cl_ord_id,
+            order_id,
+            cl_ord_id,
+            order_qty,
+            price,
+            stop_px,
+            expire_time,
+        }
+    }
+}
+
+impl RequestMessage for OrderCancelReplaceReq {
+    fn get_body(&self, delimiter: &str, _config: &Config) -> Option<String> {
+        let mut fields = vec![
+            format_field(Field::OrigClOrdID, &self.orig_cl_ord_id),
+            format_field(Field::ClOrdId, &self.cl_ord_id),
+            format_field(Field::OrderQty, self.order_qty),
+        ];
+
+        if let Some(order_id) = &self.order_id {
+            fields.push(format_field(Field::OrderID, order_id));
+        }
+        if let Some(price) = self.price {
+            fields.push(format_field(Field::Price, price));
+        }
+        if let Some(stop_px) = self.stop_px {
+            fields.push(format_field(Field::StopPx, stop_px));
+        }
+        if let Some(expire_time) = self.expire_time {
+            fields.push(format_field(
+                Field::ExpireTime,
+                expire_time.format("%Y%m%d-%H:%M:%S"),
+            ));
+        }
+
+        Some(fields.join(delimiter))
+    }
+
+    fn get_message_type(&self) -> &str {
+        "G"
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SecurityListReq {
+    pub security_req_id: String,
+    pub security_list_req_type: u32,
+    pub symbol: Option<String>,
+}
+
+impl SecurityListReq {
+    pub fn new(
+        security_req_id: String,
+        security_list_req_type: u32,
+        symbol: Option<String>,
+    ) -> Self {
+        Self {
+            security_req_id,
+            security_list_req_type,
+            symbol,
+        }
+    }
+}
+
+impl RequestMessage for SecurityListReq {
+    fn get_body(&self, delimiter: &str, _config: &Config) -> Option<String> {
+        let mut fields = vec![
+            format_field(Field::SecurityReqID, &self.security_req_id),
+            format_field(Field::SecurityListRequestType, self.security_list_req_type),
+        ];
+
+        if let Some(symbol) = &self.symbol {
+            fields.push(format_field(Field::Symbol, symbol));
+        }
+
+        Some(fields.join(delimiter))
+    }
+
+    fn get_message_type(&self) -> &str {
+        "x"
     }
 }

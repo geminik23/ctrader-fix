@@ -15,18 +15,17 @@ async fn main() -> std::io::Result<()> {
 
     let mut fix = FixApi::new(host, username, password, broker);
     fix.connect().await?;
-    fix.logon().await?;
-    // fix.disconnect().await?;
 
-    println!("sent logon");
+    fix.logon().await?;
+    log::info!("sent logon");
     async_std::task::sleep(std::time::Duration::from_secs(2)).await;
 
-    // fix.heartbeat_quote().await?;
-    // println!("sent heartbeat");
-    // async_std::task::sleep(std::time::Duration::from_secs(5)).await;
+    fix.logout().await?;
+    log::info!("sent logout");
+    async_std::task::sleep(std::time::Duration::from_secs(2)).await;
 
     fix.disconnect().await?;
-    println!("sent disconnect");
+    log::info!("sent disconnect");
     async_std::task::sleep(std::time::Duration::from_secs(1)).await;
 
     Ok(())

@@ -2,8 +2,8 @@ mod models;
 use std::sync::Arc;
 
 use async_std::io::{BufReader, BufWriter};
-use models::ResponseMessage;
 use models::{Config, HeartbeatReq, LogonReq, RequestMessage, SubID};
+use models::{LogoutReq, ResponseMessage};
 
 use async_std::net::TcpStream;
 use async_std::prelude::*;
@@ -124,6 +124,14 @@ impl FixApi {
     pub async fn logon(&mut self) -> std::io::Result<()> {
         self.send_message(SubID::QUOTE, LogonReq::default()).await?;
         self.send_message(SubID::TRADE, LogonReq::default()).await?;
+        Ok(())
+    }
+
+    pub async fn logout(&mut self) -> std::io::Result<()> {
+        self.send_message(SubID::QUOTE, LogoutReq::default())
+            .await?;
+        self.send_message(SubID::TRADE, LogoutReq::default())
+            .await?;
         Ok(())
     }
 }
