@@ -1,19 +1,25 @@
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::{
+    sync::{
+        atomic::{AtomicBool, AtomicU32, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
-use async_std::channel::{bounded, Receiver};
-use async_std::io::{BufWriter, WriteExt};
-use async_std::net::TcpStream;
-use async_std::stream::{self, StreamExt};
-use async_std::sync::RwLock;
-use async_std::task;
+use async_std::{
+    channel::{bounded, Receiver},
+    io::{BufWriter, WriteExt},
+    net::TcpStream,
+    stream::{self, StreamExt},
+    sync::RwLock,
+    task,
+};
 
 use crate::messages::{
     HeartbeatReq, LogonReq, LogoutReq, RequestMessage, ResponseMessage, TestReq,
 };
 use crate::socket::Socket;
-use crate::types::{Config, Field, SubID, DELIMITER};
+use crate::types::{Config, Error, Field, SubID, DELIMITER};
 
 pub struct FixApi {
     config: Config,
@@ -56,7 +62,7 @@ impl FixApi {
         }
     }
 
-    pub async fn disconnect(&mut self) -> std::io::Result<()> {
+    pub async fn disconnect(&mut self) -> Result<(), Error> {
         if let Some(stream) = &mut self.stream {
             stream.shutdown(std::net::Shutdown::Both)?;
         }
@@ -67,7 +73,7 @@ impl FixApi {
         Ok(())
     }
 
-    pub async fn connect(&mut self) -> std::io::Result<()> {
+    pub async fn connect(&mut self) -> Result<(), Error> {
         let (sender, receiver) = bounded(1);
         let mut socket = Socket::connect(
             self.config.host.as_str(),
@@ -93,7 +99,7 @@ impl FixApi {
         Ok(())
     }
 
-    pub async fn send_message<R: RequestMessage>(&mut self, req: R) -> std::io::Result<()> {
+    pub async fn send_message<R: RequestMessage>(&mut self, req: R) -> Result<(), Error> {
         let req = req.build(
             self.sub_id,
             self.seq.fetch_add(1, Ordering::Relaxed),
@@ -118,12 +124,12 @@ impl FixApi {
     //
     // request
     //
-    pub async fn heartbeat(&mut self) -> std::io::Result<()> {
+    pub async fn heartbeat(&mut self) -> Result<(), Error> {
         self.send_message(HeartbeatReq::default()).await?;
         Ok(())
     }
 
-    pub async fn logon(&mut self) -> std::io::Result<()> {
+    pub async fn logon(&mut self) -> Result<(), Error> {
         // TODO check the connected
 
         self.send_message(LogonReq::default()).await?;
@@ -220,7 +226,7 @@ impl FixApi {
         Ok(())
     }
 
-    pub async fn logout(&mut self) -> std::io::Result<()> {
+    pub async fn logout(&mut self) -> Result<(), Error> {
         self.send_message(LogoutReq::default()).await?;
         Ok(())
     }

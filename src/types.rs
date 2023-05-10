@@ -5,6 +5,15 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 pub const DELIMITER: &str = "\u{1}";
 
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    // reponse send error
+    // #[error(transparent)]
+    // SendError(#[from] async_std::channel::SendError<ResponseMessage>),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     pub host: String,

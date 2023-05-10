@@ -1,5 +1,7 @@
-pub mod fixapi;
+mod fixapi;
 mod market_client;
-pub mod messages;
+mod messages;
 mod socket;
-pub mod types;
+mod types;
+
+pub use market_client::MarketClient;

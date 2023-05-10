@@ -9,7 +9,10 @@ use async_std::{
     net::TcpStream,
 };
 
-use crate::{messages::ResponseMessage, types::DELIMITER};
+use crate::{
+    messages::ResponseMessage,
+    types::{Error, DELIMITER},
+};
 
 pub struct Socket {
     pub stream: Arc<TcpStream>,
@@ -32,7 +35,7 @@ impl Socket {
         })
     }
 
-    pub async fn recv_loop(&mut self, is_connected: Arc<AtomicBool>) -> std::io::Result<()> {
+    pub async fn recv_loop(&mut self, is_connected: Arc<AtomicBool>) -> Result<(), Error> {
         let mut reader = BufReader::new(self.stream.as_ref());
         let mut buffer = vec![0u8; 4096];
         loop {
