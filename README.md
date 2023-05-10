@@ -16,7 +16,8 @@ This is a Rust implementation of the FIX API for the cTrader trading platform. I
   - [x] Disconnect
 - [ ] Handle responses
   - [x] Implement response structure
-  - [ ] Implement response parsing
+  - [x] Implement response handler - notify
+
 
 
 

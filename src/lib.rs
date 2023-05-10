@@ -5,13 +5,13 @@ use std::time::Duration;
 
 use async_std::channel::{bounded, Receiver, Sender};
 use async_std::io::{BufReader, BufWriter};
-use async_std::stream::{self, StreamExt};
-use models::{Config, Field, HeartbeatReq, LogonReq, RequestMessage, SubID, TestReq};
-use models::{LogoutReq, ResponseMessage};
-
 use async_std::net::TcpStream;
 use async_std::prelude::*;
+use async_std::stream::{self, StreamExt};
+use async_std::sync::RwLock;
 use async_std::task;
+use models::{Config, Field, HeartbeatReq, LogonReq, RequestMessage, SubID, TestReq};
+use models::{LogoutReq, ResponseMessage};
 
 pub struct Socket {
     stream: Arc<TcpStream>,
@@ -31,6 +31,8 @@ pub struct BaseFixApi {
 
     res_receiver: Option<Receiver<ResponseMessage>>,
     notifier: Option<Receiver<()>>,
+
+    container: Arc<RwLock<Vec<ResponseMessage>>>,
 }
 
 pub struct StreamData {}
@@ -57,6 +59,7 @@ impl BaseFixApi {
             notifier: None,
             is_connected: Arc::new(AtomicBool::new(false)),
             seq: Arc::new(AtomicU32::new(1)),
+            container: Arc::new(RwLock::new(Vec::new())),
             sub_id,
         }
     }
@@ -98,7 +101,7 @@ impl BaseFixApi {
         Ok(())
     }
 
-    async fn send_message<R: RequestMessage>(&mut self, req: R) -> std::io::Result<()> {
+    pub async fn send_message<R: RequestMessage>(&mut self, req: R) -> std::io::Result<()> {
         let req = req.build(
             self.sub_id,
             self.seq.fetch_add(1, Ordering::Relaxed),
@@ -176,21 +179,30 @@ impl BaseFixApi {
                         while let Some(_) = heartbeat_stream.next().await {
                             let req = HeartbeatReq::default();
                             send_request(Box::new(req)).await;
-                            log::info!("Sent the heartbeat");
+                            log::debug!("Sent the heartbeat");
                         }
                     });
 
+                    //
+                    // handle the responses
+
+                    // notifier
+                    let (tx, rx) = bounded(1);
+                    self.notifier = Some(rx);
                     let recv = self.res_receiver.clone().unwrap();
+                    let cont = self.container.clone();
+
                     task::spawn(async move {
                         while let Ok(res) = recv.recv().await {
                             // notify? or send? via channel?
                             match res.get_message_type() {
                                 "1" => {
+                                    // send back with test request id
                                     if let Some(test_req_id) = res.get_field_value(Field::TestReqID)
                                     {
                                         send_request_clone(Box::new(TestReq::new(test_req_id)))
                                             .await;
-                                        log::info!("Sent the heartbeat from test_req_id");
+                                        log::debug!("Sent the heartbeat from test_req_id");
                                     }
                                 }
                                 // "3" => process_reject,
@@ -203,7 +215,17 @@ impl BaseFixApi {
                                 // "X" => process_market_incr_data,
                                 // "y" => process_sec_list,
                                 // "AP" => process_position_list,
-                                _ => {}
+                                _ => {
+                                    // store the response in container.
+                                    let mut cont = cont.write().await;
+                                    cont.push(res);
+                                    tx.send(()).await.unwrap_or_else(|e| {
+                                        log::error!(
+                                            "Failed to notify that the response is received - {:?}",
+                                            e
+                                        );
+                                    });
+                                }
                             }
                         }
                     });
