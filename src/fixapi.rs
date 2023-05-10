@@ -15,11 +15,12 @@ use async_std::{
     task,
 };
 
-use crate::messages::{
-    HeartbeatReq, LogonReq, LogoutReq, RequestMessage, ResponseMessage, TestReq,
-};
 use crate::socket::Socket;
 use crate::types::{Config, Error, Field, SubID, DELIMITER};
+use crate::{
+    messages::{HeartbeatReq, LogonReq, LogoutReq, RequestMessage, ResponseMessage, TestReq},
+    types::ConnectionHandler,
+};
 
 pub struct FixApi {
     config: Config,
@@ -33,6 +34,8 @@ pub struct FixApi {
     notifier: Option<Receiver<()>>,
 
     container: Arc<RwLock<Vec<ResponseMessage>>>,
+    //callback
+    connection_handler: Option<Arc<dyn ConnectionHandler + Send + Sync>>,
 }
 
 impl FixApi {
@@ -59,7 +62,15 @@ impl FixApi {
             seq: Arc::new(AtomicU32::new(1)),
             container: Arc::new(RwLock::new(Vec::new())),
             sub_id,
+            connection_handler: None,
         }
+    }
+
+    pub fn register_connection_handler<T: ConnectionHandler + Send + Sync + 'static>(
+        &mut self,
+        handler: T,
+    ) {
+        self.connection_handler = Some(Arc::new(handler));
     }
 
     pub async fn disconnect(&mut self) -> Result<(), Error> {
@@ -85,15 +96,24 @@ impl FixApi {
             sender,
         )
         .await?;
-
         self.is_connected.store(true, Ordering::Relaxed);
+        log::debug!("stream connected");
+
+        // notify connection
+        if let Some(handler) = self.connection_handler.clone() {
+            task::spawn(async move {
+                handler.on_connect().await;
+            });
+        }
+
         self.res_receiver = Some(receiver);
         self.stream = Some(socket.stream.clone());
 
         let is_connected = self.is_connected.clone();
 
-        let _handle = task::spawn(async move {
-            socket.recv_loop(is_connected).await.unwrap();
+        let handler = self.connection_handler.clone();
+        let _ = task::spawn(async move {
+            socket.recv_loop(is_connected, handler).await.unwrap();
         });
 
         Ok(())
@@ -107,12 +127,11 @@ impl FixApi {
             &self.config,
         );
         if let Some(stream) = self.stream.as_mut() {
+            log::debug!("Send request : {}", req);
             let mut writer = BufWriter::new(stream.as_ref());
             writer.write_all(req.as_bytes()).await?;
             writer.flush().await?;
         }
-
-        // TODO wait
 
         Ok(())
     }
@@ -139,6 +158,13 @@ impl FixApi {
             while let Ok(response) = recv.recv().await {
                 // logon response
                 if response.get_message_type() == "A" {
+                    //
+                    if let Some(handler) = self.connection_handler.clone() {
+                        task::spawn(async move {
+                            handler.on_logon().await;
+                        });
+                    }
+
                     let stream = self.stream.clone().unwrap();
                     let sub_id = self.sub_id;
                     let config = self.config.clone();
@@ -206,13 +232,16 @@ impl FixApi {
                                 _ => {
                                     // store the response in container.
                                     let mut cont = cont.write().await;
-                                    cont.push(res);
-                                    tx.send(()).await.unwrap_or_else(|e| {
-                                        log::error!(
-                                            "Failed to notify that the response is received - {:?}",
-                                            e
-                                        );
-                                    });
+                                    log::info!("{}", res.get_message());
+
+                                    // TODO
+                                    // cont.push(res);
+                                    // tx.send(()).await.unwrap_or_else(|e| {
+                                    //     log::error!(
+                                    //         "Failed to notify that the response is received - {:?}",
+                                    //         e
+                                    //     );
+                                    // });
                                 }
                             }
                         }

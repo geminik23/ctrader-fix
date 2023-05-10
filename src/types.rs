@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use std::str::FromStr;
 
+use async_trait::async_trait;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 pub const DELIMITER: &str = "\u{1}";
@@ -39,6 +40,13 @@ impl Config {
             heart_beat,
         }
     }
+}
+
+#[async_trait]
+pub trait ConnectionHandler {
+    async fn on_connect(&self);
+    async fn on_logon(&self);
+    async fn on_disconnect(&self);
 }
 
 #[repr(u32)]

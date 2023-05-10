@@ -263,7 +263,7 @@ pub struct MarketDataReq {
     no_md_entry_types: u32,
     md_entry_type: char,
     no_related_sym: u32,
-    symbol: String,
+    symbol: u32,
 }
 
 impl MarketDataReq {
@@ -275,7 +275,7 @@ impl MarketDataReq {
         no_md_entry_types: u32,
         md_entry_type: char,
         no_related_sym: u32,
-        symbol: String,
+        symbol: u32,
     ) -> Self {
         Self {
             md_req_id,

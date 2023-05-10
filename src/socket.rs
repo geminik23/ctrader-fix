@@ -7,11 +7,13 @@ use async_std::{
     channel::Sender,
     io::{BufReader, ReadExt},
     net::TcpStream,
+    task,
 };
 
 use crate::{
     messages::ResponseMessage,
     types::{Error, DELIMITER},
+    ConnectionHandler,
 };
 
 pub struct Socket {
@@ -35,13 +37,17 @@ impl Socket {
         })
     }
 
-    pub async fn recv_loop(&mut self, is_connected: Arc<AtomicBool>) -> Result<(), Error> {
+    pub async fn recv_loop(
+        &mut self,
+        is_connected: Arc<AtomicBool>,
+        handler: Option<Arc<dyn ConnectionHandler + Send + Sync>>,
+    ) -> Result<(), Error> {
         let mut reader = BufReader::new(self.stream.as_ref());
         let mut buffer = vec![0u8; 4096];
         loop {
             let bytes_read = reader.read(&mut buffer).await?;
             if bytes_read == 0 {
-                log::error!("Disconnected");
+                log::debug!("stream disconnected");
                 break;
             }
             let res = String::from_utf8_lossy(&buffer[..bytes_read]);
@@ -61,7 +67,14 @@ impl Socket {
                 self.msg_buffer.clear();
             }
         }
+
         is_connected.store(false, Ordering::Relaxed);
+        // notify disconnection
+        if let Some(handler) = handler {
+            task::spawn(async move {
+                handler.on_disconnect().await;
+            });
+        }
         Ok(())
     }
 }
