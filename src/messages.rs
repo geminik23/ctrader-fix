@@ -261,7 +261,7 @@ pub struct MarketDataReq {
     market_depth: u32,
     md_update_type: Option<u32>,
     no_md_entry_types: u32,
-    md_entry_type: char,
+    md_entry_type: Vec<char>,
     no_related_sym: u32,
     symbol: u32,
 }
@@ -272,8 +272,7 @@ impl MarketDataReq {
         subscription_req_type: char,
         market_depth: u32,
         md_update_type: Option<u32>,
-        no_md_entry_types: u32,
-        md_entry_type: char,
+        md_entry_type: &[char],
         no_related_sym: u32,
         symbol: u32,
     ) -> Self {
@@ -282,8 +281,8 @@ impl MarketDataReq {
             subscription_req_type,
             market_depth,
             md_update_type,
-            no_md_entry_types,
-            md_entry_type,
+            no_md_entry_types: md_entry_type.len() as u32,
+            md_entry_type: md_entry_type.into(),
             no_related_sym,
             symbol,
         }
@@ -297,10 +296,16 @@ impl RequestMessage for MarketDataReq {
             format_field(Field::SubscriptionRequestType, self.subscription_req_type),
             format_field(Field::MarketDepth, self.market_depth),
             format_field(Field::NoMDEntryTypes, self.no_md_entry_types),
-            format_field(Field::MDEntryType, self.md_entry_type),
+        ];
+        // order important
+        self.md_entry_type
+            .iter()
+            .for_each(|c| fields.push(format_field(Field::MDEntryType, c)));
+
+        fields.extend([
             format_field(Field::NoRelatedSym, self.no_related_sym),
             format_field(Field::Symbol, &self.symbol),
-        ];
+        ]);
 
         if let Some(md_update_type) = self.md_update_type {
             fields.push(format_field(Field::MDUpdateType, md_update_type));

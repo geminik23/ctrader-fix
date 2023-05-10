@@ -38,7 +38,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // connect and logon
     client.connect().await?;
     if client.is_connected() {
+        client.subscribe(11).await?;
 
+        async_std::task::sleep(std::time::Duration::from_secs(5)).await;
         //
     }
 

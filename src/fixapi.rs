@@ -1,4 +1,7 @@
 use std::{
+    collections::HashMap,
+    future::Future,
+    pin::Pin,
     sync::{
         atomic::{AtomicBool, AtomicU32, Ordering},
         Arc,
@@ -7,7 +10,7 @@ use std::{
 };
 
 use async_std::{
-    channel::{bounded, Receiver},
+    channel::{bounded, Receiver, Sender},
     io::{BufWriter, WriteExt},
     net::TcpStream,
     stream::{self, StreamExt},
@@ -15,12 +18,12 @@ use async_std::{
     task,
 };
 
-use crate::socket::Socket;
 use crate::types::{Config, Error, Field, SubID, DELIMITER};
 use crate::{
     messages::{HeartbeatReq, LogonReq, LogoutReq, RequestMessage, ResponseMessage, TestReq},
     types::ConnectionHandler,
 };
+use crate::{socket::Socket, types::AsyncMarketCallback};
 
 pub struct FixApi {
     config: Config,
@@ -31,11 +34,14 @@ pub struct FixApi {
     is_connected: Arc<AtomicBool>,
 
     res_receiver: Option<Receiver<ResponseMessage>>,
-    notifier: Option<Receiver<()>>,
+    pub trigger: Sender<()>,
+    listener: Receiver<()>,
 
-    container: Arc<RwLock<Vec<ResponseMessage>>>,
+    pub container: Arc<RwLock<HashMap<u32, ResponseMessage>>>,
+
     //callback
     connection_handler: Option<Arc<dyn ConnectionHandler + Send + Sync>>,
+    market_callback: Option<AsyncMarketCallback>,
 }
 
 impl FixApi {
@@ -47,6 +53,7 @@ impl FixApi {
         broker: String,
         heartbeat_interval: Option<u32>,
     ) -> Self {
+        let (tx, rx) = bounded(1);
         Self {
             config: Config::new(
                 host,
@@ -57,13 +64,27 @@ impl FixApi {
             ),
             stream: None,
             res_receiver: None,
-            notifier: None,
+            trigger: tx,
+            listener: rx,
             is_connected: Arc::new(AtomicBool::new(false)),
             seq: Arc::new(AtomicU32::new(1)),
-            container: Arc::new(RwLock::new(Vec::new())),
+            container: Arc::new(RwLock::new(HashMap::new())),
             sub_id,
             connection_handler: None,
+            market_callback: None,
         }
+    }
+
+    pub fn register_market_callback<F, Fut>(&mut self, callback: F)
+    where
+        F: Fn(String) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + Sync + 'static,
+    {
+        self.market_callback = Some(Arc::new(
+            move |s: String| -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> {
+                Box::pin(callback(s))
+            },
+        ));
     }
 
     pub fn register_connection_handler<T: ConnectionHandler + Send + Sync + 'static>(
@@ -79,7 +100,6 @@ impl FixApi {
         }
         self.stream = None;
         self.res_receiver = None;
-        self.notifier = None;
         self.is_connected.store(false, Ordering::Relaxed);
         Ok(())
     }
@@ -119,13 +139,9 @@ impl FixApi {
         Ok(())
     }
 
-    pub async fn send_message<R: RequestMessage>(&mut self, req: R) -> Result<(), Error> {
-        let req = req.build(
-            self.sub_id,
-            self.seq.fetch_add(1, Ordering::Relaxed),
-            DELIMITER,
-            &self.config,
-        );
+    pub async fn send_message<R: RequestMessage>(&mut self, req: R) -> Result<u32, Error> {
+        let no_seq = self.seq.fetch_add(1, Ordering::Relaxed);
+        let req = req.build(self.sub_id, no_seq, DELIMITER, &self.config);
         if let Some(stream) = self.stream.as_mut() {
             log::debug!("Send request : {}", req);
             let mut writer = BufWriter::new(stream.as_ref());
@@ -133,20 +149,26 @@ impl FixApi {
             writer.flush().await?;
         }
 
-        Ok(())
+        Ok(no_seq)
     }
 
     pub fn is_connected(&self) -> bool {
         self.is_connected.load(Ordering::Relaxed)
     }
 
+    pub async fn wait_notifier(&self) -> Result<(), Error> {
+        if !self.is_connected() {
+            return Err(Error::NotConnected);
+        }
+        self.listener.recv().await.map_err(|e| e.into())
+    }
     //
     // request
     //
-    pub async fn heartbeat(&mut self) -> Result<(), Error> {
-        self.send_message(HeartbeatReq::default()).await?;
-        Ok(())
-    }
+    // pub async fn heartbeat(&mut self) -> Result<(), Error> {
+    //     self.send_message(HeartbeatReq::default()).await?;
+    //     Ok(())
+    // }
 
     pub async fn logon(&mut self) -> Result<(), Error> {
         // TODO check the connected
@@ -211,10 +233,10 @@ impl FixApi {
                     // handle the responses
 
                     // notifier
-                    let (tx, rx) = bounded(1);
-                    self.notifier = Some(rx);
+                    let tx = self.trigger.clone();
                     let recv = self.res_receiver.clone().unwrap();
                     let cont = self.container.clone();
+                    let market_callback = self.market_callback.clone();
 
                     task::spawn(async move {
                         while let Ok(res) = recv.recv().await {
@@ -229,19 +251,45 @@ impl FixApi {
                                         log::debug!("Sent the heartbeat from test_req_id");
                                     }
                                 }
-                                _ => {
-                                    // store the response in container.
-                                    let mut cont = cont.write().await;
-                                    log::info!("{}", res.get_message());
+                                "W" => {
+                                    // market data
+
+                                    // let symbol_id = res.get_field_value(Field::Symbol).unwrap();
 
                                     // TODO
-                                    // cont.push(res);
-                                    // tx.send(()).await.unwrap_or_else(|e| {
-                                    //     log::error!(
-                                    //         "Failed to notify that the response is received - {:?}",
-                                    //         e
-                                    //     );
-                                    // });
+                                    // for market data,
+                                    // notify to callback
+                                    if let Some(market_callback) = market_callback.clone() {
+                                        // TODO
+                                        market_callback("sdf".into()).await;
+                                    }
+                                }
+                                "X" => { // market incr data
+                                }
+                                _ => {
+                                    log::info!("{}", res.get_message());
+
+                                    if let Some(seq_num) = res.get_field_value(Field::MsgSeqNum) {
+                                        // store the response in container.
+                                        {
+                                            let mut cont = cont.write().await;
+                                            cont.insert(
+                                                seq_num.parse().expect(
+                                                    "Failed to parse the MsgSeqNum into u32",
+                                                ),
+                                                res,
+                                            );
+                                        }
+                                        tx.send(()).await.unwrap_or_else(|e| {
+                                                // fatal
+                                                log::error!(
+                                                "Failed to notify that the response is received - {:?}",
+                                                e
+                                            );
+                                        });
+                                    } else {
+                                        log::debug!("No seq number : {}", res.get_message());
+                                    }
                                 }
                             }
                         }

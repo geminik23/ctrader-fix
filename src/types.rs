@@ -1,19 +1,33 @@
 use serde::Deserialize;
-use std::str::FromStr;
+use std::{future::Future, pin::Pin, str::FromStr, sync::Arc};
 
 use async_trait::async_trait;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+
+use crate::messages::ResponseMessage;
 
 pub const DELIMITER: &str = "\u{1}";
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[error("No connection")]
+    NotConnected,
+    #[error("Not logged on")]
+    NotLoggedOn,
+    #[error("Failed to subscription {0}: {1}")]
+    SubscriptionError(u32, String),
+
     // reponse send error
-    // #[error(transparent)]
-    // SendError(#[from] async_std::channel::SendError<ResponseMessage>),
+    #[error(transparent)]
+    SendError(#[from] async_std::channel::SendError<ResponseMessage>),
+    #[error(transparent)]
+    RecvError(#[from] async_std::channel::RecvError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
+
+pub type AsyncMarketCallback =
+    Arc<dyn Fn(String) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> + Send + Sync>;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
