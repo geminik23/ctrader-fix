@@ -1,7 +1,7 @@
 use std::env;
 
 // Usage example:
-use ctrader_fix::FixApi;
+use ctrader_fix::{models::SubID, BaseFixApi};
 
 #[async_std::main]
 async fn main() -> std::io::Result<()> {
@@ -13,7 +13,7 @@ async fn main() -> std::io::Result<()> {
     let password = env::var("CTRADER_FIX_PASSWORD").unwrap();
     let broker = env::var("CTRADER_FIX_BROKER").unwrap();
 
-    let mut fix = FixApi::new(host, username, password, broker, None);
+    let mut fix = BaseFixApi::new(SubID::QUOTE, host, username, password, broker, None);
     fix.connect().await?;
 
     fix.logon().await?;

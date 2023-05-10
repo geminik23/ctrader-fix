@@ -4,13 +4,13 @@ use std::{collections::HashMap, str::FromStr};
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     pub host: String,
     username: String,
     password: String,
     broker: String,
-    heart_beat: u32,
+    pub heart_beat: u32,
 }
 
 impl Config {
@@ -182,32 +182,29 @@ impl Default for OrderType {
 #[derive(Debug, Clone)]
 pub struct ResponseMessage {
     message: String,
-    fields: HashMap<Field, String>,
+    fields: HashMap<u32, String>,
 }
 
 impl ResponseMessage {
     pub fn new(message: &str, delimiter: &str) -> Self {
         let message = message.replace(delimiter, "|");
         let fields = message
-            .split(delimiter)
+            .split("|")
             .filter(|field| !field.is_empty() && field.contains("="))
             .map(|field| {
                 let parts = field.split("=").collect::<Vec<_>>();
-                (
-                    Field::try_from(parts[0].parse::<u32>().unwrap()).unwrap(),
-                    parts[1].to_string(),
-                )
+                (parts[0].parse::<u32>().unwrap(), parts[1].to_string())
             })
             .collect::<HashMap<_, _>>();
         Self { message, fields }
     }
 
     pub fn get_field_value(&self, field: Field) -> Option<String> {
-        self.fields.get(&field).map(|v| v.clone())
+        self.fields.get(&(field as u32)).map(|v| v.clone())
     }
 
     pub fn get_message_type(&self) -> &str {
-        &self.fields.get(&Field::MsgType).unwrap()
+        &self.fields.get(&(Field::MsgType as u32)).unwrap()
     }
 
     pub fn get_message(&self) -> &str {
@@ -221,7 +218,7 @@ fn format_field<T: std::fmt::Display>(field: Field, value: T) -> String {
 // Request
 
 // motivated from the cTraderFixPy .
-pub trait RequestMessage {
+pub trait RequestMessage: Send {
     fn build(
         &self,
         sub_id: SubID,
