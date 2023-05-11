@@ -27,9 +27,11 @@ This is a Rust implementation of the FIX API for the cTrader trading platform. I
   - [x] Unsubscribe the symbol for spot
   - [x] Subscribe the symbol for depth 
   - [x] Unsubscribe the symbol for depth 
-  - [ ] Parsing the market data in callback
+  - [x] Parsing the spot market data in callback
+  - [x] Add quote spot data method
+  - [x] Parsing the depth market data in callback
+  - [ ] Parsing the incremental market data in callback
   - [ ] Market data handler.
-  - [ ] Add quote spot data method
   - [ ] Test : handle wrong response.
 - [ ] TradeClient
 	

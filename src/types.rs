@@ -23,6 +23,38 @@ impl std::fmt::Display for MarketType {
         f.write_str(s)
     }
 }
+
+#[derive(Debug, Clone)]
+pub enum PriceType {
+    Bid,
+    Ask,
+}
+
+impl FromStr for PriceType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "0" => Ok(Self::Bid),
+            "1" => Ok(Self::Ask),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SpotPrice {
+    pub bid: f64,
+    pub ask: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct DepthPrice {
+    pub price_type: PriceType,
+    pub price: f64,
+    pub size: f64,
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("No connection")]
