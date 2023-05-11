@@ -6,38 +6,119 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct ResponseMessage {
     message: String,
-    fields: HashMap<u32, String>,
+    // fields: HashMap<u32, String>,
+    field_idx: HashMap<u32, usize>,
+    fields: Vec<(u32, String)>,
 }
 
 impl ResponseMessage {
     pub fn new(message: &str, delimiter: &str) -> Self {
         let message = message.replace(delimiter, "|");
+        let mut idx_map = HashMap::new();
         let fields = message
             .split("|")
             .filter(|field| !field.is_empty() && field.contains("="))
-            .map(|field| {
+            .enumerate()
+            .map(|(idx, field)| {
                 let parts = field.split("=").collect::<Vec<_>>();
-                (parts[0].parse::<u32>().unwrap(), parts[1].to_string())
+
+                let field = parts[0].parse::<u32>().unwrap();
+                if !idx_map.contains_key(&field) {
+                    idx_map.insert(parts[0].parse::<u32>().unwrap(), idx);
+                }
+                (field, parts[1].to_string())
             })
-            .collect::<HashMap<_, _>>();
-        Self { message, fields }
+            .collect::<Vec<_>>();
+        Self {
+            message,
+            field_idx: idx_map,
+            fields,
+        }
     }
 
     pub fn get_field_value(&self, field: Field) -> Option<String> {
-        self.fields.get(&(field as u32)).map(|v| v.clone())
+        self.field_idx
+            .get(&(field as u32))
+            .map(|idx| self.fields[*idx].1.clone())
+        // self.fields.get(&(field as u32)).map(|v| v.clone())
     }
 
     pub fn get_message_type(&self) -> &str {
-        &self.fields.get(&(Field::MsgType as u32)).unwrap()
+        self.field_idx
+            .get(&(Field::MsgType as u32))
+            .map(|idx| &self.fields[*idx].1)
+            .unwrap()
     }
 
     pub fn get_message(&self) -> &str {
         &self.message
     }
+
+    pub fn get_repeating_groups(
+        &self,
+        count_key: Field,
+        start_field: Field,
+        end_field: Option<Field>,
+    ) -> Vec<HashMap<Field, String>> {
+        // FIX later : better algorithms
+        let count_key = count_key as u32;
+
+        let mut count = None;
+        let mut result = vec![];
+        let mut item = HashMap::new();
+        // located more than 8
+        if let Some(start_idx) = self.field_idx.get(&(count_key as u32)) {
+            for (k, v) in &self.fields[*start_idx..] {
+                match count {
+                    Some(0) => {
+                        return result;
+                    }
+                    None => {
+                        if *k == count_key as u32 {
+                            count = Some(v.parse::<usize>().unwrap());
+                        }
+                        continue;
+                    }
+                    _ => {
+                        let key = Field::try_from(*k)
+                            .expect("Failed to parse u32 to Field in get_repeating_groups");
+
+                        match end_field {
+                            Some(end_key) => {
+                                item.insert(key, v.clone());
+
+                                if key == end_key {
+                                    result.push(item.clone());
+                                    item.clear();
+                                    count = count.map(|c| c - 1);
+                                }
+                            }
+                            None => {
+                                if key == start_field && !item.is_empty() {
+                                    result.push(item.clone());
+                                    item.clear();
+                                    count = count.map(|c| c - 1);
+                                }
+
+                                item.insert(key, v.clone());
+                            }
+                        }
+                        // if Some(key) == end_field
+                        //     || (end_field.is_none() && key == start_field && !item.is_empty())
+                        // {
+                        // }
+                        // item.insert(key, v.clone());
+                    }
+                }
+            }
+            result.push(item.clone());
+        }
+        result
+    }
 }
 
 fn format_field<T: std::fmt::Display>(field: Field, value: T) -> String {
-    format!("{}={}", Into::<u32>::into(field), value)
+    format!("{}={}", field as u32, value)
 }
 // Request
 
@@ -632,5 +713,25 @@ impl RequestMessage for SecurityListReq {
 
     fn get_message_type(&self) -> &str {
         "x"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ResponseMessage;
+    use crate::types::{Field, DELIMITER};
+    #[test]
+    fn test_parse_repeating_group() {
+        let res = "8=FIX.4.4|9=134|35=W|34=2|49=CSERVER|50=QUOTE|52=20170117-10:26:54.630|56=live.theBroker.12345|57=any_string|55=1|268=2|269=0|270=1.06625|269=1|270=1.0663|10=118|".to_string().replace("|", DELIMITER);
+        let msg = ResponseMessage::new(&res, DELIMITER);
+        let result = msg.get_repeating_groups(
+            Field::NoMDEntries,
+            Field::MDEntryType,
+            Some(Field::MDEntryPx),
+        );
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].len(), 2);
+        assert_eq!(result[1].len(), 2);
     }
 }
