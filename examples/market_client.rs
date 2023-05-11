@@ -38,10 +38,35 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // connect and logon
     client.connect().await?;
     if client.is_connected() {
-        client.subscribe(11).await?;
+        let symbol_id = 11;
+        match client.subscribe_spot(symbol_id).await {
+            Ok(_) => {
+                log::info!("Success to subscribe the symbol_id({})", symbol_id);
+                async_std::task::sleep(std::time::Duration::from_secs(5)).await;
 
-        async_std::task::sleep(std::time::Duration::from_secs(5)).await;
-        //
+                // try to subscription again
+                // if let Err(err) = client.subscribe_spot(symbol_id).await {
+                //     log::error!("{:?}", err);
+                // }
+
+                client.unsubscribe_spot(symbol_id).await?;
+                log::info!("Success to unsubscribe the symbol_id({})", symbol_id);
+
+                // try to unsubscription again
+                // if let Err(err) = client.unsubscribe_spot(symbol_id).await {
+                //     log::error!("{:?}", err);
+                // }
+            }
+            Err(err) => {
+                log::error!(
+                    "Failed to subscribe the symbol_id({}) - {:?}",
+                    symbol_id,
+                    err
+                );
+            }
+        }
+
+        // depth market
     }
 
     // disconnect

@@ -21,12 +21,13 @@ impl ResponseMessage {
             .enumerate()
             .map(|(idx, field)| {
                 let parts = field.split("=").collect::<Vec<_>>();
+                let value = &parts[1..].join("=");
 
                 let field = parts[0].parse::<u32>().unwrap();
                 if !idx_map.contains_key(&field) {
                     idx_map.insert(parts[0].parse::<u32>().unwrap(), idx);
                 }
-                (field, parts[1].to_string())
+                (field, value.to_string())
             })
             .collect::<Vec<_>>();
         Self {
@@ -85,7 +86,10 @@ impl ResponseMessage {
 
                         match end_field {
                             Some(end_key) => {
-                                item.insert(key, v.clone());
+                                // exclude the checksum
+                                if key != Field::CheckSum {
+                                    item.insert(key, v.clone());
+                                }
 
                                 if key == end_key {
                                     result.push(item.clone());
@@ -100,7 +104,9 @@ impl ResponseMessage {
                                     count = count.map(|c| c - 1);
                                 }
 
-                                item.insert(key, v.clone());
+                                if key != Field::CheckSum {
+                                    item.insert(key, v.clone());
+                                }
                             }
                         }
                         // if Some(key) == end_field
@@ -721,7 +727,7 @@ mod tests {
     use super::ResponseMessage;
     use crate::types::{Field, DELIMITER};
     #[test]
-    fn test_parse_repeating_group() {
+    fn test_parse_repeating_group_spot_market() {
         let res = "8=FIX.4.4|9=134|35=W|34=2|49=CSERVER|50=QUOTE|52=20170117-10:26:54.630|56=live.theBroker.12345|57=any_string|55=1|268=2|269=0|270=1.06625|269=1|270=1.0663|10=118|".to_string().replace("|", DELIMITER);
         let msg = ResponseMessage::new(&res, DELIMITER);
         let result = msg.get_repeating_groups(
@@ -729,9 +735,59 @@ mod tests {
             Field::MDEntryType,
             Some(Field::MDEntryPx),
         );
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].len(), 2);
+        assert_eq!(result[1].len(), 2);
+
+        let result = msg.get_repeating_groups(Field::NoMDEntries, Field::MDEntryType, None);
 
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].len(), 2);
         assert_eq!(result[1].len(), 2);
+    }
+
+    #[test]
+    fn test_parse_repeating_group_depth_market() {
+        let res = "8=FIX.4.4|9=310|35=W|34=2|49=CSERVER|50=QUOTE|52=20180925-12:05:28.284|56=live.theBroker.12345|57=Quote|55=1|268=6|269=1|270=1.11132|271=3000000|278=16|269=1|270=1.11134|271=5000000|278=17|269=1|270=1.11133|271=3000000|278=15|269=0|270=1.1112|271=2000000|278=12|269=0|270=1.11121|271=1000000|278=13|269=0|270=1.11122|271=3000000|278=14|10=247|".to_string().replace("|", DELIMITER);
+        let msg = ResponseMessage::new(&res, DELIMITER);
+        let result = msg.get_repeating_groups(Field::NoMDEntries, Field::MDEntryType, None);
+
+        assert_eq!(6, result.len());
+        for group in result.into_iter() {
+            assert_eq!(4, group.len());
+            assert!(group.contains_key(&Field::MDEntryID));
+            assert!(group.contains_key(&Field::MDEntrySize));
+            assert!(group.contains_key(&Field::MDEntryPx));
+            assert!(group.contains_key(&Field::MDEntryType));
+        }
+    }
+    #[test]
+    fn test_parse_repeating_group_market_incre() {
+        let res = "8=FIX.4.4|9=376|35=X|34=3|49=CSERVER|50=QUOTE|52=20170117-11:13:44.555|56=live.theBroker.12345|57=any_string|268=8|279=0|269=0|278=7491|55=1|270=1.06897|271=1000000|279=0|269=0|278=7490|55=1|270=1.06898|271=1000000|279=0|269=0|278=7489|55=1|270=1.06874|271=32373000|279=0|269=1|278=7496|55=1|270=1.06931|271=34580000|279=2|278=7477|55=1|279=2|278=7468|55=1|279=2|278=7467|55=1|279=2|278=7484|55=1|10=192|
+".to_string().replace("|", DELIMITER);
+        let msg = ResponseMessage::new(&res, DELIMITER);
+        let result = msg.get_repeating_groups(Field::NoMDEntries, Field::MDUpdateAction, None);
+
+        assert_eq!(8, result.len());
+        for group in result.into_iter() {
+            match group.get(&Field::MDUpdateAction).unwrap().as_str() {
+                "0" => {
+                    assert_eq!(6, group.len());
+                    assert!(group.contains_key(&Field::Symbol));
+                    assert!(group.contains_key(&Field::MDEntryID));
+                    assert!(group.contains_key(&Field::MDEntryPx));
+                    assert!(group.contains_key(&Field::MDEntryType));
+                    assert!(group.contains_key(&Field::MDEntrySize));
+                }
+                "2" => {
+                    assert_eq!(3, group.len());
+                    assert!(group.contains_key(&Field::Symbol));
+                    assert!(group.contains_key(&Field::MDEntryID));
+                }
+                _ => {
+                    assert!(false);
+                }
+            }
+        }
     }
 }

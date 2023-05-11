@@ -19,14 +19,20 @@ This is a Rust implementation of the FIX API for the cTrader trading platform. I
   - [x] Implement response handler - notify
 - [x] Add Error struct using `thiserror`
 - [ ] MarketClient
-  - [x] Market data Callback 
-  - [x] parsing response message.
-  - [ ] subscribe the symbol.
-  - [ ] unsubscribe the symbol.
-
+  - [x] Internal Market data Callback 
+  - [x] Parsing response message.
+  - [x] Subscribe the symbol for spot 
+  - [x] Implement the check the request has accepted method.
+  - [x] Test for parsing market datas
+  - [x] Unsubscribe the symbol for spot
+  - [ ] Subscribe the symbol for depth 
+  - [ ] Unsubscribe the symbol for depth 
+  - [ ] Parsing the market data in callback
+  - [ ] Market data handler.
+  - [ ] Add quote spot data method
+  - [ ] Test : handle wrong response.
+- [ ] TradeClient
 	
-
-
 
 
 

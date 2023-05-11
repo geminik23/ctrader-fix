@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::{future::Future, pin::Pin, str::FromStr, sync::Arc};
+use std::{collections::HashMap, future::Future, pin::Pin, str::FromStr, sync::Arc};
 
 use async_trait::async_trait;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -16,18 +16,40 @@ pub enum Error {
     NotLoggedOn,
     #[error("Failed to subscription {0}: {1}")]
     SubscriptionError(u32, String),
+    #[error("Already subscribed symbol({0})")]
+    SubscribedAlready(u32),
+    #[error("Waiting then response of subscription for symbol({0})")]
+    RequestingSubscription(u32),
+    #[error("Not susbscribed symbol({0})")]
+    NotSubscribed(u32),
+
+    //
+    // for internals
+    #[error("Request rejected")]
+    RequestRejected(ResponseMessage),
+    #[error("Failed to find the response of seq num({0})")]
+    NoResponse(u32),
 
     // reponse send error
     #[error(transparent)]
     SendError(#[from] async_std::channel::SendError<ResponseMessage>),
+    #[error(transparent)]
+    TriggerError(#[from] async_std::channel::SendError<()>),
     #[error(transparent)]
     RecvError(#[from] async_std::channel::RecvError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
 
-pub type AsyncMarketCallback =
-    Arc<dyn Fn(String) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> + Send + Sync>;
+pub type AsyncMarketCallback = Arc<
+    dyn Fn(
+            char,
+            u32,
+            Vec<HashMap<Field, String>>,
+        ) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>>
+        + Send
+        + Sync,
+>;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {

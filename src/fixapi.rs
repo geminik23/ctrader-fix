@@ -77,12 +77,15 @@ impl FixApi {
 
     pub fn register_market_callback<F, Fut>(&mut self, callback: F)
     where
-        F: Fn(String) -> Fut + Send + Sync + 'static,
+        F: Fn(char, u32, Vec<HashMap<Field, String>>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = ()> + Send + Sync + 'static,
     {
         self.market_callback = Some(Arc::new(
-            move |s: String| -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> {
-                Box::pin(callback(s))
+            move |msg_type: char,
+                  symbol_id: u32,
+                  data: Vec<HashMap<Field, String>>|
+                  -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> {
+                Box::pin(callback(msg_type, symbol_id, data))
             },
         ));
     }
@@ -162,6 +165,21 @@ impl FixApi {
         }
         self.listener.recv().await.map_err(|e| e.into())
     }
+
+    pub async fn check_req_accepted(&self, seq_num: u32) -> Result<ResponseMessage, Error> {
+        let mut cont = self.container.write().await;
+        //check the seq no
+        if let Some(res) = cont.remove(&seq_num) {
+            // rejected
+            if res.get_message_type() == "3" {
+                log::debug!("Got rejected to subscribe");
+                return Err(Error::RequestRejected(res));
+            }
+            Ok(res)
+        } else {
+            Err(Error::NoResponse(seq_num))
+        }
+    }
     //
     // request
     //
@@ -240,8 +258,9 @@ impl FixApi {
 
                     task::spawn(async move {
                         while let Ok(res) = recv.recv().await {
+                            let msg_type = res.get_message_type();
                             // notify? or send? via channel?
-                            match res.get_message_type() {
+                            match msg_type {
                                 "1" => {
                                     // send back with test request id
                                     if let Some(test_req_id) = res.get_field_value(Field::TestReqID)
@@ -251,20 +270,28 @@ impl FixApi {
                                         log::debug!("Sent the heartbeat from test_req_id");
                                     }
                                 }
-                                "W" => {
+                                "W" | "X" => {
                                     // market data
-
-                                    // let symbol_id = res.get_field_value(Field::Symbol).unwrap();
-
-                                    // TODO
-                                    // for market data,
+                                    let symbol_id = res
+                                        .get_field_value(Field::Symbol)
+                                        .expect("Failed to find the Symbol tag")
+                                        .parse::<u32>()
+                                        .unwrap();
                                     // notify to callback
                                     if let Some(market_callback) = market_callback.clone() {
-                                        // TODO
-                                        market_callback("sdf".into()).await;
+                                        let data = res.get_repeating_groups(
+                                            Field::NoMDEntries,
+                                            Field::MDEntryType,
+                                            None,
+                                        );
+
+                                        market_callback(
+                                            msg_type.chars().next().unwrap(),
+                                            symbol_id,
+                                            data,
+                                        )
+                                        .await;
                                     }
-                                }
-                                "X" => { // market incr data
                                 }
                                 _ => {
                                     log::info!("{}", res.get_message());
