@@ -41,20 +41,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let symbol_id = 11;
         match client.subscribe_spot(symbol_id).await {
             Ok(_) => {
-                log::info!("Success to subscribe the symbol_id({})", symbol_id);
+                log::info!("Success to spot subscribe the symbol_id({})", symbol_id);
                 async_std::task::sleep(std::time::Duration::from_secs(5)).await;
 
                 // try to subscription again
                 // if let Err(err) = client.subscribe_spot(symbol_id).await {
-                //     log::error!("{:?}", err);
+                //     log::error!("{}", err);
                 // }
 
                 client.unsubscribe_spot(symbol_id).await?;
-                log::info!("Success to unsubscribe the symbol_id({})", symbol_id);
+                log::info!("Success to spot unsubscribe the symbol_id({})", symbol_id);
 
                 // try to unsubscription again
                 // if let Err(err) = client.unsubscribe_spot(symbol_id).await {
-                //     log::error!("{:?}", err);
+                //     log::error!("{}", err);
                 // }
             }
             Err(err) => {
@@ -67,6 +67,32 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
 
         // depth market
+        match client.subscribe_depth(symbol_id).await {
+            Ok(_) => {
+                log::info!("Success to depth subscribe the symbol_id({})", symbol_id);
+                async_std::task::sleep(std::time::Duration::from_secs(5)).await;
+
+                // try to subscription again
+                if let Err(err) = client.subscribe_depth(symbol_id).await {
+                    log::error!("{}", err);
+                }
+
+                client.unsubscribe_depth(symbol_id).await?;
+                log::info!("Success to depth unsubscribe the symbol_id({})", symbol_id);
+
+                // try to unsubscription again
+                if let Err(err) = client.unsubscribe_depth(symbol_id).await {
+                    log::error!("{}", err);
+                }
+            }
+            Err(err) => {
+                log::error!(
+                    "Failed to subscribe the symbol_id({}) - {:?}",
+                    symbol_id,
+                    err
+                );
+            }
+        }
     }
 
     // disconnect

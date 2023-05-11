@@ -8,22 +8,36 @@ use crate::messages::ResponseMessage;
 
 pub const DELIMITER: &str = "\u{1}";
 
+#[derive(Debug)]
+pub enum MarketType {
+    Spot,
+    Depth,
+}
+
+impl std::fmt::Display for MarketType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Spot => "Spot",
+            Self::Depth => "Depth",
+        };
+        f.write_str(s)
+    }
+}
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("No connection")]
     NotConnected,
     #[error("Not logged on")]
     NotLoggedOn,
-    #[error("Failed to subscription {0}: {1}")]
-    SubscriptionError(u32, String),
-    #[error("Already subscribed symbol({0})")]
-    SubscribedAlready(u32),
-    #[error("Waiting then response of subscription for symbol({0})")]
-    RequestingSubscription(u32),
-    #[error("Not susbscribed symbol({0})")]
-    NotSubscribed(u32),
+    #[error("Failed to {2} subscription {0}: {1}")]
+    SubscriptionError(u32, String, MarketType),
+    #[error("Already subscribed {1} for symbol({0})")]
+    SubscribedAlready(u32, MarketType),
+    #[error("Waiting then response of {1} subscription for symbol({0})")]
+    RequestingSubscription(u32, MarketType),
+    #[error("Not susbscribed {1} for symbol({0})")]
+    NotSubscribed(u32, MarketType),
 
-    //
     // for internals
     #[error("Request rejected")]
     RequestRejected(ResponseMessage),

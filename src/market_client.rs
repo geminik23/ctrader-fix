@@ -1,14 +1,11 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use async_std::sync::Mutex;
 
 use crate::{
     fixapi::FixApi,
     messages::MarketDataReq,
-    types::{ConnectionHandler, Error, Field},
+    types::{ConnectionHandler, Error, Field, MarketType},
 };
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -21,7 +18,7 @@ pub struct MarketClient {
     internal: FixApi,
 
     spot_req_states: Arc<Mutex<HashMap<u32, RequestState>>>,
-    // depth_req_states: Arc<Mutex<HashMap<u32, RequestState>>>,
+    depth_req_states: Arc<Mutex<HashMap<u32, RequestState>>>,
 
     // requested_symbol: Arc<Mutex<HashSet<u32>>>,
     spot_market_data: Arc<Mutex<HashMap<u32, (f64, f64)>>>,
@@ -46,10 +43,14 @@ impl MarketClient {
         let spot_req_states = Arc::new(Mutex::new(HashMap::new()));
         let spot_market_data = Arc::new(Mutex::new(HashMap::new()));
 
+        let depth_req_states = Arc::new(Mutex::new(HashMap::new()));
+
         // clone
         let trigger = internal.trigger.clone();
         let spot_req_states_clone = spot_req_states.clone();
         let spot_market_data_clone = spot_market_data.clone();
+
+        let depth_req_states_clone = depth_req_states.clone();
 
         let market_callback =
             move |msg_type: char, symbol_id: u32, data: Vec<HashMap<Field, String>>| {
@@ -58,34 +59,64 @@ impl MarketClient {
                 let tx = trigger.clone();
                 let spot_req_states_clone = spot_req_states_clone.clone();
                 let spot_market_data_clone = spot_market_data_clone.clone();
+                let depth_req_states_clone = depth_req_states_clone.clone();
 
                 async move {
                     match msg_type {
                         'W' => {
-                            // TODO parse
                             // check whether data is spot or depth
-                            if Some(&RequestState::Requested)
-                                == spot_req_states_clone.lock().await.get(&symbol_id)
-                            {
-                                spot_req_states_clone
-                                    .lock()
-                                    .await
-                                    .insert(symbol_id, RequestState::Accepted);
+                            if data.len() != 0 && !data[0].contains_key(&Field::MDEntryID) {
+                                //spot
+                                if Some(&RequestState::Requested)
+                                    == spot_req_states_clone.lock().await.get(&symbol_id)
+                                {
+                                    spot_req_states_clone
+                                        .lock()
+                                        .await
+                                        .insert(symbol_id, RequestState::Accepted);
 
-                                tx.send(()).await.unwrap_or_else(|e| {
-                                    // fatal
-                                    log::error!(
-                                        "Failed to notify that the response is received - {:?}",
-                                        e
-                                    );
-                                });
+                                    tx.send(()).await.unwrap_or_else(|e| {
+                                        // fatal
+                                        log::error!(
+                                            "Failed to notify that the response is received - {:?}",
+                                            e
+                                        );
+                                    });
+                                }
+
+                                // TODO
+                                // update spot data
+                            } else {
+                                // depth
+                                if Some(&RequestState::Requested)
+                                    == depth_req_states_clone.lock().await.get(&symbol_id)
+                                {
+                                    depth_req_states_clone
+                                        .lock()
+                                        .await
+                                        .insert(symbol_id, RequestState::Accepted);
+
+                                    tx.send(()).await.unwrap_or_else(|e| {
+                                        // fatal
+                                        log::error!(
+                                            "Failed to notify that the response is received - {:?}",
+                                            e
+                                        );
+                                    });
+                                }
+
+                                // TODO
+                                // update the depth data
                             }
-
-                            // Market data
-                            // if requested_symbol_clone.lock().await.contains(&symbol_id) {}
                         }
                         'X' => {
                             // Market data incremental refresh
+
+                            if Some(&RequestState::Accepted)
+                                == depth_req_states_clone.lock().await.get(&symbol_id)
+                            {
+                                //
+                            }
                         }
                         _ => {}
                     }
@@ -97,6 +128,7 @@ impl MarketClient {
             internal,
             spot_req_states,
             spot_market_data,
+            depth_req_states,
         }
     }
 
@@ -132,7 +164,7 @@ impl MarketClient {
         // check already subscribed?
         // FIXME : two states - requested accepted
         if self.spot_req_states.lock().await.contains_key(&symbol_id) {
-            return Err(Error::SubscribedAlready(symbol_id));
+            return Err(Error::SubscribedAlready(symbol_id, MarketType::Spot));
         }
 
         // add to requested symbol.
@@ -151,7 +183,7 @@ impl MarketClient {
             if let Some(RequestState::Accepted) = self.spot_req_states.lock().await.get(&symbol_id)
             {
                 // accepted
-                log::trace!("Subscription accepted for symbol({})", symbol_id);
+                log::trace!("Spot data subscription accepted for symbol({})", symbol_id);
                 break;
             }
 
@@ -162,12 +194,13 @@ impl MarketClient {
                 //     break;
                 // }
                 Err(Error::RequestRejected(res)) => {
-                    log::error!("Failed to subscribe the symbol_id {:?}", symbol_id);
+                    log::error!("Failed to spot subscribe the symbol_id {:?}", symbol_id);
                     self.spot_req_states.lock().await.remove(&symbol_id);
                     return Err(Error::SubscriptionError(
                         symbol_id,
                         res.get_field_value(Field::Text)
                             .expect("No Text tag in Reject response"),
+                        MarketType::Spot,
                     ));
                 }
                 _ => {
@@ -194,17 +227,17 @@ impl MarketClient {
 
         match states {
             Some(RequestState::Requested) => {
-                return Err(Error::RequestingSubscription(symbol_id));
+                return Err(Error::RequestingSubscription(symbol_id, MarketType::Spot));
             }
             None => {
-                return Err(Error::NotSubscribed(symbol_id));
+                return Err(Error::NotSubscribed(symbol_id, MarketType::Spot));
             }
             _ => {
                 self.spot_req_states.lock().await.remove(&symbol_id);
                 let req = MarketDataReq::new("-1".into(), '2', 1, None, &['0', '1'], 1, symbol_id);
                 let _seq_num = self.internal.send_message(req).await?;
 
-                log::trace!("Unsubscribed for symbol({})", symbol_id);
+                log::trace!("Unsubscribed spot for symbol({})", symbol_id);
 
                 // no need to wait
                 Ok(())
@@ -213,9 +246,80 @@ impl MarketClient {
     }
 
     pub async fn subscribe_depth(&mut self, symbol_id: u32) -> Result<(), Error> {
-        unimplemented!()
+        // check already subscribed?
+        // FIXME : two states - requested accepted
+        if self.depth_req_states.lock().await.contains_key(&symbol_id) {
+            return Err(Error::SubscribedAlready(symbol_id, MarketType::Depth));
+        }
+
+        // add to requested symbol.
+        self.depth_req_states
+            .lock()
+            .await
+            .insert(symbol_id, RequestState::Requested);
+
+        // intialize the request and send req
+        let req = MarketDataReq::new("-1".into(), '1', 0, None, &['0', '1'], 1, symbol_id);
+        let seq_num = self.internal.send_message(req).await?;
+
+        // waiting (reject or  marketdata)
+        while let Ok(()) = self.internal.wait_notifier().await {
+            // check the market data
+            if let Some(RequestState::Accepted) = self.depth_req_states.lock().await.get(&symbol_id)
+            {
+                // accepted
+                log::trace!("Depth data subscription accepted for symbol({})", symbol_id);
+                break;
+            }
+
+            match self.internal.check_req_accepted(seq_num).await {
+                Err(Error::RequestRejected(res)) => {
+                    log::error!("Failed to depth subscribe the symbol_id {:?}", symbol_id);
+                    self.depth_req_states.lock().await.remove(&symbol_id);
+                    return Err(Error::SubscriptionError(
+                        symbol_id,
+                        res.get_field_value(Field::Text)
+                            .expect("No Text tag in Reject response"),
+                        MarketType::Depth,
+                    ));
+                }
+                _ => {
+                    // no response
+                    // retrigger
+                    if let Err(err) = self.internal.trigger.send(()).await {
+                        return Err(Error::TriggerError(err));
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
+
     pub async fn unsubscribe_depth(&mut self, symbol_id: u32) -> Result<(), Error> {
-        unimplemented!()
+        let states = self
+            .depth_req_states
+            .lock()
+            .await
+            .get(&symbol_id)
+            .map(|v| *v);
+
+        match states {
+            Some(RequestState::Requested) => {
+                return Err(Error::RequestingSubscription(symbol_id, MarketType::Depth));
+            }
+            None => {
+                return Err(Error::NotSubscribed(symbol_id, MarketType::Depth));
+            }
+            _ => {
+                self.depth_req_states.lock().await.remove(&symbol_id);
+                let req = MarketDataReq::new("-1".into(), '2', 0, None, &['0', '1'], 1, symbol_id);
+                let _seq_num = self.internal.send_message(req).await?;
+
+                log::trace!("Unsubscribed depth for symbol({})", symbol_id);
+
+                Ok(())
+            }
+        }
     }
 }
