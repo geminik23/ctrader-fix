@@ -23,7 +23,7 @@ use crate::{
     messages::{HeartbeatReq, LogonReq, LogoutReq, RequestMessage, ResponseMessage, TestReq},
     types::ConnectionHandler,
 };
-use crate::{socket::Socket, types::AsyncMarketCallback};
+use crate::{socket::Socket, types::MarketCallback};
 
 pub struct FixApi {
     config: Config,
@@ -41,7 +41,7 @@ pub struct FixApi {
 
     //callback
     connection_handler: Option<Arc<dyn ConnectionHandler + Send + Sync>>,
-    market_callback: Option<AsyncMarketCallback>,
+    market_callback: Option<MarketCallback>,
 }
 
 impl FixApi {
@@ -75,17 +75,13 @@ impl FixApi {
         }
     }
 
-    pub fn register_market_callback<F, Fut>(&mut self, callback: F)
+    pub fn register_market_callback<F>(&mut self, callback: F)
     where
-        F: Fn(char, u32, Vec<HashMap<Field, String>>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = ()> + Send + Sync + 'static,
+        F: Fn(char, u32, Vec<HashMap<Field, String>>) -> () + Send + Sync + 'static,
     {
         self.market_callback = Some(Arc::new(
-            move |msg_type: char,
-                  symbol_id: u32,
-                  data: Vec<HashMap<Field, String>>|
-                  -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> {
-                Box::pin(callback(msg_type, symbol_id, data))
+            move |msg_type: char, symbol_id: u32, data: Vec<HashMap<Field, String>>| -> () {
+                callback(msg_type, symbol_id, data)
             },
         ));
     }
@@ -281,7 +277,11 @@ impl FixApi {
                                     if let Some(market_callback) = market_callback.clone() {
                                         let data = res.get_repeating_groups(
                                             Field::NoMDEntries,
-                                            Field::MDEntryType,
+                                            if msg_type == "W" {
+                                                Field::MDEntryType
+                                            } else {
+                                                Field::MDUpdateAction
+                                            },
                                             None,
                                         );
 
@@ -289,8 +289,7 @@ impl FixApi {
                                             msg_type.chars().next().unwrap(),
                                             symbol_id,
                                             data,
-                                        )
-                                        .await;
+                                        );
                                     }
                                 }
                                 _ => {

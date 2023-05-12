@@ -1,6 +1,6 @@
 [package]
 name = "ctrader-fix"
-version = "0.2.9"
+version = "0.2.10"
 authors = ["Jaemin Kim <geminik23@gmail.com>"]
 edition = "2021"
 description = ""

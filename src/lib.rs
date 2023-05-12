@@ -7,4 +7,7 @@ mod types;
 
 pub use market_client::MarketClient;
 pub use trade_client::TradeClient;
-pub use types::{ConnectionHandler, DepthPrice, Error, MarketType, PriceType, SpotPrice};
+pub use types::{
+    ConnectionHandler, DepthPrice, Error, IncrementalRefresh, MarketDataHandler, MarketType,
+    PriceType, SpotPrice,
+};

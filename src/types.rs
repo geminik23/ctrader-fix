@@ -55,6 +55,19 @@ pub struct DepthPrice {
     pub size: f64,
 }
 
+#[derive(Debug, Clone)]
+pub enum IncrementalRefresh {
+    New {
+        symbol_id: u32,
+        entry_id: String,
+        data: DepthPrice,
+    },
+    Delete {
+        symbol_id: u32,
+        entry_id: String,
+    },
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("No connection")]
@@ -87,15 +100,10 @@ pub enum Error {
     Io(#[from] std::io::Error),
 }
 
-pub type AsyncMarketCallback = Arc<
-    dyn Fn(
-            char,
-            u32,
-            Vec<HashMap<Field, String>>,
-        ) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>>
-        + Send
-        + Sync,
->;
+//
+// only for internal
+pub type MarketCallback = Arc<dyn Fn(char, u32, Vec<HashMap<Field, String>>) -> () + Send + Sync>;
+//
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
@@ -129,6 +137,13 @@ pub trait ConnectionHandler {
     async fn on_connect(&self);
     async fn on_logon(&self);
     async fn on_disconnect(&self);
+}
+
+#[async_trait]
+pub trait MarketDataHandler {
+    async fn on_price_of(&self, symbol_id: u32, price: SpotPrice);
+    async fn on_market_depth_full_refresh(&self, full_depth: HashMap<String, DepthPrice>);
+    async fn on_market_depth_incremental_refresh(&self, refresh: Vec<IncrementalRefresh>);
 }
 
 #[repr(u32)]

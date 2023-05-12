@@ -3,12 +3,16 @@ use std::{
     sync::Arc,
 };
 
-use async_std::sync::Mutex;
+use async_std::sync::{Mutex, RwLock};
+use async_std::task;
 
 use crate::{
     fixapi::FixApi,
     messages::MarketDataReq,
-    types::{ConnectionHandler, Error, Field, MarketType, PriceType, SpotPrice},
+    types::{
+        ConnectionHandler, Error, Field, IncrementalRefresh, MarketDataHandler, MarketType,
+        SpotPrice,
+    },
     DepthPrice,
 };
 
@@ -26,21 +30,33 @@ pub struct MarketClient {
 
     // requested_symbol: Arc<Mutex<HashSet<u32>>>,
     spot_market_data: Arc<Mutex<HashMap<u32, SpotPrice>>>,
-    depth_market_data: Arc<Mutex<HashMap<u32, HashMap<String, DepthPrice>>>>, // temporary
+    depth_market_data: Arc<RwLock<HashMap<u32, HashMap<String, DepthPrice>>>>, // temporary
+    //
+    //
+    market_data_handler: Option<Arc<dyn MarketDataHandler + Send + Sync>>,
+}
+
+// fn pasre_incremental_refresh(e: HashMap<Field, String>)
+
+fn insert_entry_to(e: HashMap<Field, String>, depth_data: &mut HashMap<String, DepthPrice>) {
+    if e.len() < 4 {
+        return;
+    }
+    let eid = e.get(&Field::MDEntryID).unwrap();
+    depth_data.insert(
+        eid.clone(),
+        DepthPrice {
+            price_type: e.get(&Field::MDEntryType).unwrap().parse().unwrap(),
+            price: e.get(&Field::MDEntryPx).unwrap().parse::<f64>().unwrap(),
+            size: e.get(&Field::MDEntrySize).unwrap().parse::<f64>().unwrap(),
+        },
+    );
 }
 
 fn depth_data_from_entries(data: Vec<HashMap<Field, String>>) -> HashMap<String, DepthPrice> {
     let mut depth_data = HashMap::new();
     for e in data.into_iter() {
-        let eid = e.get(&Field::MDEntryID).unwrap();
-        depth_data.insert(
-            eid.clone(),
-            DepthPrice {
-                price_type: e.get(&Field::MDEntryType).unwrap().parse().unwrap(),
-                price: e.get(&Field::MDEntryPx).unwrap().parse::<f64>().unwrap(),
-                size: e.get(&Field::MDEntrySize).unwrap().parse::<f64>().unwrap(),
-            },
-        );
+        insert_entry_to(e, &mut depth_data);
     }
     depth_data
 }
@@ -75,27 +91,49 @@ impl MarketClient {
         broker: String,
         heartbeat_interval: Option<u32>,
     ) -> Self {
-        let mut internal = FixApi::new(
-            crate::types::SubID::QUOTE,
-            host,
-            login,
-            password,
-            broker,
-            heartbeat_interval,
-        );
-        let spot_req_states = Arc::new(Mutex::new(HashMap::new()));
-        let spot_market_data = Arc::new(Mutex::new(HashMap::new()));
+        Self {
+            internal: FixApi::new(
+                crate::types::SubID::QUOTE,
+                host,
+                login,
+                password,
+                broker,
+                heartbeat_interval,
+            ),
 
-        let depth_req_states = Arc::new(Mutex::new(HashMap::new()));
-        let depth_market_data = Arc::new(Mutex::new(HashMap::new()));
+            spot_req_states: Arc::new(Mutex::new(HashMap::new())),
+            spot_market_data: Arc::new(Mutex::new(HashMap::new())),
 
+            depth_req_states: Arc::new(Mutex::new(HashMap::new())),
+            depth_market_data: Arc::new(RwLock::new(HashMap::new())),
+            market_data_handler: None,
+        }
+    }
+
+    pub fn register_market_handler<T: MarketDataHandler + Send + Sync + 'static>(
+        &mut self,
+        handler: T,
+    ) {
+        self.market_data_handler = Some(Arc::new(handler));
+    }
+
+    pub fn register_connection_handler<T: ConnectionHandler + Send + Sync + 'static>(
+        &mut self,
+        handler: T,
+    ) {
+        self.internal.register_connection_handler(handler);
+    }
+
+    fn register_internal_handler(&mut self) {
         // clone
-        let trigger = internal.trigger.clone();
-        let spot_req_states_clone = spot_req_states.clone();
-        let spot_market_data_clone = spot_market_data.clone();
+        let trigger = self.internal.trigger.clone();
+        let spot_req_states_clone = self.spot_req_states.clone();
+        let spot_market_data_clone = self.spot_market_data.clone();
 
-        let depth_req_states_clone = depth_req_states.clone();
-        let depth_market_data_clone = depth_market_data.clone();
+        let depth_req_states_clone = self.depth_req_states.clone();
+        let depth_market_data_clone = self.depth_market_data.clone();
+
+        let market_data_handler = self.market_data_handler.clone();
 
         let market_callback =
             move |msg_type: char, symbol_id: u32, data: Vec<HashMap<Field, String>>| {
@@ -107,7 +145,10 @@ impl MarketClient {
                 let depth_req_states_clone = depth_req_states_clone.clone();
                 let depth_market_data_clone = depth_market_data_clone.clone();
 
-                async move {
+                let market_data_handler = market_data_handler.clone();
+
+                //
+                task::spawn(async move {
                     match msg_type {
                         'W' => {
                             // check whether data is spot or depth
@@ -137,10 +178,12 @@ impl MarketClient {
                                     spot_market_data_clone
                                         .lock()
                                         .await
-                                        .insert(symbol_id, prices);
+                                        .insert(symbol_id, prices.clone());
 
-                                    // TODO
                                     // to handler
+                                    if let Some(handler) = market_data_handler {
+                                        handler.on_price_of(symbol_id, prices).await;
+                                    }
                                 }
                             } else {
                                 // depth
@@ -162,44 +205,115 @@ impl MarketClient {
                                 }
 
                                 {
-                                    // update the depth data
-                                    let mut depth_cont = depth_market_data_clone.lock().await;
-                                    depth_cont.insert(symbol_id, depth_data_from_entries(data));
-                                }
+                                    let depth_data = depth_data_from_entries(data);
 
-                                // TODO
-                                // to handler
+                                    // FIXME which one should be first?
+                                    // to handler
+                                    if let Some(handler) = market_data_handler {
+                                        handler
+                                            .on_market_depth_full_refresh(depth_data.clone())
+                                            .await;
+                                    }
+
+                                    // update the depth data
+                                    depth_market_data_clone
+                                        .write()
+                                        .await
+                                        .insert(symbol_id, depth_data);
+                                }
                             }
                         }
                         'X' => {
+                            // ignore the symbol_id argument
+                            //
                             // Market data incremental refresh
-
                             if Some(&RequestState::Accepted)
                                 == depth_req_states_clone.lock().await.get(&symbol_id)
                             {
+                                let mut incre_list = Vec::new();
+                                for e in data.into_iter() {
+                                    let symbol =
+                                        e.get(&Field::Symbol).unwrap().parse::<u32>().unwrap();
+
+                                    match e.get(&Field::MDUpdateAction) {
+                                        Some(s) if s == "2" => {
+                                            // delete
+                                            incre_list.push(IncrementalRefresh::Delete {
+                                                symbol_id: symbol,
+                                                entry_id: e.get(&Field::MDEntryID).unwrap().clone(),
+                                            });
+                                        }
+                                        Some(s) if s == "0" => {
+                                            // new
+                                            let eid = e.get(&Field::MDEntryID).unwrap();
+                                            incre_list.push(IncrementalRefresh::New {
+                                                symbol_id: symbol,
+                                                entry_id: eid.clone(),
+                                                data: DepthPrice {
+                                                    price_type: e
+                                                        .get(&Field::MDEntryType)
+                                                        .unwrap()
+                                                        .parse()
+                                                        .unwrap(),
+                                                    price: e
+                                                        .get(&Field::MDEntryPx)
+                                                        .unwrap()
+                                                        .parse::<f64>()
+                                                        .unwrap(),
+                                                    size: e
+                                                        .get(&Field::MDEntrySize)
+                                                        .unwrap()
+                                                        .parse::<f64>()
+                                                        .unwrap(),
+                                                },
+                                            });
+                                        }
+                                        _ => {}
+                                    }
+                                }
+
+                                // FIXME which one should be first?
+                                // to handler
+                                if let Some(handler) = market_data_handler {
+                                    handler
+                                        .on_market_depth_incremental_refresh(incre_list.clone())
+                                        .await;
+                                }
+
+                                {
+                                    let mut depth_cont = depth_market_data_clone.write().await;
+                                    for incre in incre_list.into_iter() {
+                                        match incre {
+                                            IncrementalRefresh::New {
+                                                symbol_id,
+                                                entry_id,
+                                                data,
+                                            } => {
+                                                let s = depth_cont
+                                                    .entry(symbol_id)
+                                                    .or_insert(HashMap::new());
+                                                s.insert(entry_id, data);
+                                            }
+                                            IncrementalRefresh::Delete {
+                                                symbol_id,
+                                                entry_id,
+                                            } => {
+                                                let s = depth_cont
+                                                    .entry(symbol_id)
+                                                    .or_insert(HashMap::new());
+                                                s.remove(&entry_id);
+                                            }
+                                        }
+                                    }
+                                }
                                 //
                             }
                         }
                         _ => {}
                     }
-                }
+                });
             };
-        internal.register_market_callback(market_callback);
-
-        Self {
-            internal,
-            spot_req_states,
-            spot_market_data,
-            depth_req_states,
-            depth_market_data,
-        }
-    }
-
-    pub fn register_connection_handler<T: ConnectionHandler + Send + Sync + 'static>(
-        &mut self,
-        handler: T,
-    ) {
-        self.internal.register_connection_handler(handler);
+        self.internal.register_market_callback(market_callback);
     }
 
     /// Connects to a server
@@ -207,6 +321,10 @@ impl MarketClient {
     /// This method first attempt to establish a connection. If the connection is succesful, then
     /// it proceeds to logon directly.
     pub async fn connect(&mut self) -> Result<(), Error> {
+        // set market handler
+        self.register_internal_handler();
+
+        // connection
         self.internal.connect().await?;
         self.internal.logon().await
     }
@@ -251,7 +369,7 @@ impl MarketClient {
 
     pub async fn depth_data(&self, symbol_id: u32) -> Result<HashMap<String, DepthPrice>, Error> {
         self.depth_market_data
-            .lock()
+            .read()
             .await
             .get(&symbol_id)
             .map(|v| v.clone())
@@ -415,7 +533,7 @@ impl MarketClient {
             }
             _ => {
                 self.depth_req_states.lock().await.remove(&symbol_id);
-                self.depth_market_data.lock().await.remove(&symbol_id);
+                self.depth_market_data.write().await.remove(&symbol_id);
                 let req = MarketDataReq::new("-1".into(), '2', 0, None, &['0', '1'], 1, symbol_id);
                 let _seq_num = self.internal.send_message(req).await?;
 
