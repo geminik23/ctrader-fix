@@ -142,7 +142,11 @@ pub trait ConnectionHandler {
 #[async_trait]
 pub trait MarketDataHandler {
     async fn on_price_of(&self, symbol_id: u32, price: SpotPrice);
-    async fn on_market_depth_full_refresh(&self, full_depth: HashMap<String, DepthPrice>);
+    async fn on_market_depth_full_refresh(
+        &self,
+        symbol_id: u32,
+        full_depth: HashMap<String, DepthPrice>,
+    );
     async fn on_market_depth_incremental_refresh(&self, refresh: Vec<IncrementalRefresh>);
 }
 

@@ -28,15 +28,12 @@ pub struct MarketClient {
     spot_req_states: Arc<Mutex<HashMap<u32, RequestState>>>,
     depth_req_states: Arc<Mutex<HashMap<u32, RequestState>>>,
 
-    // requested_symbol: Arc<Mutex<HashSet<u32>>>,
     spot_market_data: Arc<Mutex<HashMap<u32, SpotPrice>>>,
-    depth_market_data: Arc<RwLock<HashMap<u32, HashMap<String, DepthPrice>>>>, // temporary
+    depth_market_data: Arc<RwLock<HashMap<u32, HashMap<String, DepthPrice>>>>,
     //
     //
     market_data_handler: Option<Arc<dyn MarketDataHandler + Send + Sync>>,
 }
-
-// fn pasre_incremental_refresh(e: HashMap<Field, String>)
 
 fn insert_entry_to(e: HashMap<Field, String>, depth_data: &mut HashMap<String, DepthPrice>) {
     if e.len() < 4 {
@@ -109,12 +106,25 @@ impl MarketClient {
             market_data_handler: None,
         }
     }
+    pub fn register_market_handler_arc<T: MarketDataHandler + Send + Sync + 'static>(
+        &mut self,
+        handler: Arc<T>,
+    ) {
+        self.market_data_handler = Some(handler);
+    }
 
     pub fn register_market_handler<T: MarketDataHandler + Send + Sync + 'static>(
         &mut self,
         handler: T,
     ) {
         self.market_data_handler = Some(Arc::new(handler));
+    }
+
+    pub fn register_connection_handler_arc<T: ConnectionHandler + Send + Sync + 'static>(
+        &mut self,
+        handler: Arc<T>,
+    ) {
+        self.internal.register_connection_handler_arc(handler);
     }
 
     pub fn register_connection_handler<T: ConnectionHandler + Send + Sync + 'static>(
@@ -211,7 +221,10 @@ impl MarketClient {
                                     // to handler
                                     if let Some(handler) = market_data_handler {
                                         handler
-                                            .on_market_depth_full_refresh(depth_data.clone())
+                                            .on_market_depth_full_refresh(
+                                                symbol_id,
+                                                depth_data.clone(),
+                                            )
                                             .await;
                                     }
 
@@ -381,9 +394,15 @@ impl MarketClient {
         // .. code is too messy. is there a better way?
 
         // check already subscribed?
-        // FIXME : two states - requested accepted
-        if self.spot_req_states.lock().await.contains_key(&symbol_id) {
-            return Err(Error::SubscribedAlready(symbol_id, MarketType::Spot));
+        if let Some(state) = self.spot_req_states.lock().await.get(&symbol_id) {
+            match state {
+                RequestState::Accepted => {
+                    return Err(Error::SubscribedAlready(symbol_id, MarketType::Spot));
+                }
+                RequestState::Requested => {
+                    return Err(Error::RequestingSubscription(symbol_id, MarketType::Spot));
+                }
+            }
         }
 
         // add to requested symbol.
@@ -423,6 +442,7 @@ impl MarketClient {
                     ));
                 }
                 _ => {
+                    // FIXME is it necessary?
                     // no response
                     // retrigger
                     if let Err(err) = self.internal.trigger.send(()).await {
@@ -467,9 +487,15 @@ impl MarketClient {
 
     pub async fn subscribe_depth(&mut self, symbol_id: u32) -> Result<(), Error> {
         // check already subscribed?
-        // FIXME : two states - requested accepted
-        if self.depth_req_states.lock().await.contains_key(&symbol_id) {
-            return Err(Error::SubscribedAlready(symbol_id, MarketType::Depth));
+        if let Some(state) = self.depth_req_states.lock().await.get(&symbol_id) {
+            match state {
+                RequestState::Accepted => {
+                    return Err(Error::SubscribedAlready(symbol_id, MarketType::Depth));
+                }
+                RequestState::Requested => {
+                    return Err(Error::RequestingSubscription(symbol_id, MarketType::Depth));
+                }
+            }
         }
 
         // add to requested symbol.

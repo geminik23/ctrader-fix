@@ -1,7 +1,5 @@
 use std::{
     collections::HashMap,
-    future::Future,
-    pin::Pin,
     sync::{
         atomic::{AtomicBool, AtomicU32, Ordering},
         Arc,
@@ -84,6 +82,13 @@ impl FixApi {
                 callback(msg_type, symbol_id, data)
             },
         ));
+    }
+
+    pub fn register_connection_handler_arc<T: ConnectionHandler + Send + Sync + 'static>(
+        &mut self,
+        handler: Arc<T>,
+    ) {
+        self.connection_handler = Some(handler);
     }
 
     pub fn register_connection_handler<T: ConnectionHandler + Send + Sync + 'static>(
