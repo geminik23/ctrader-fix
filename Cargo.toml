@@ -3,11 +3,12 @@ name = "ctrader-fix"
 version = "0.2.11"
 authors = ["Jaemin Kim <geminik23@gmail.com>"]
 edition = "2021"
-description = ""
+description = "A rust implementation of the cTrader FIX API."
 license = "MIT"
 readme = "README.md"
 # documentation = "https://docs.rs/"
 repository = "https://github.com/geminik23/ctrader-fix"
+keywords = ["ctrade", "fix", "api", "finance", "trading"]
 
 
 
