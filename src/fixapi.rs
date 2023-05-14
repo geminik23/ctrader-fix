@@ -99,7 +99,7 @@ impl FixApi {
     }
 
     pub async fn disconnect(&mut self) -> Result<(), Error> {
-        if let Some(stream) = &mut self.stream {
+        if let Some(stream) = self.stream.clone() {
             stream.shutdown(std::net::Shutdown::Both)?;
         }
         self.stream = None;
@@ -143,10 +143,10 @@ impl FixApi {
         Ok(())
     }
 
-    pub async fn send_message<R: RequestMessage>(&mut self, req: R) -> Result<u32, Error> {
+    pub async fn send_message<R: RequestMessage>(&self, req: R) -> Result<u32, Error> {
         let no_seq = self.seq.fetch_add(1, Ordering::Relaxed);
         let req = req.build(self.sub_id, no_seq, DELIMITER, &self.config);
-        if let Some(stream) = self.stream.as_mut() {
+        if let Some(stream) = self.stream.clone() {
             log::debug!("Send request : {}", req);
             let mut writer = BufWriter::new(stream.as_ref());
             writer.write_all(req.as_bytes()).await?;
@@ -189,7 +189,7 @@ impl FixApi {
     //     Ok(())
     // }
 
-    pub async fn logon(&mut self) -> Result<(), Error> {
+    pub async fn logon(&self) -> Result<(), Error> {
         // TODO check the connected
 
         self.send_message(LogonReq::default()).await?;
@@ -298,7 +298,7 @@ impl FixApi {
                                     }
                                 }
                                 _ => {
-                                    log::info!("{}", res.get_message());
+                                    log::debug!("{}", res.get_message());
 
                                     if let Some(seq_num) = res.get_field_value(Field::MsgSeqNum) {
                                         // store the response in container.
@@ -334,7 +334,7 @@ impl FixApi {
         Ok(())
     }
 
-    pub async fn logout(&mut self) -> Result<(), Error> {
+    pub async fn logout(&self) -> Result<(), Error> {
         self.send_message(LogoutReq::default()).await?;
         Ok(())
     }

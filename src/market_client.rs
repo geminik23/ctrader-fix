@@ -389,7 +389,7 @@ impl MarketClient {
             .ok_or(Error::NotSubscribed(symbol_id, MarketType::Spot))
     }
 
-    pub async fn subscribe_spot(&mut self, symbol_id: u32) -> Result<(), Error> {
+    pub async fn subscribe_spot(&self, symbol_id: u32) -> Result<(), Error> {
         // FIXME later
         // .. code is too messy. is there a better way?
 
@@ -455,7 +455,7 @@ impl MarketClient {
         Ok(())
     }
 
-    pub async fn unsubscribe_spot(&mut self, symbol_id: u32) -> Result<(), Error> {
+    pub async fn unsubscribe_spot(&self, symbol_id: u32) -> Result<(), Error> {
         // if let Some(RequestState::Requested) =
         let states = self
             .spot_req_states
@@ -485,7 +485,7 @@ impl MarketClient {
         }
     }
 
-    pub async fn subscribe_depth(&mut self, symbol_id: u32) -> Result<(), Error> {
+    pub async fn subscribe_depth(&self, symbol_id: u32) -> Result<(), Error> {
         // check already subscribed?
         if let Some(state) = self.depth_req_states.lock().await.get(&symbol_id) {
             match state {
@@ -542,7 +542,7 @@ impl MarketClient {
         Ok(())
     }
 
-    pub async fn unsubscribe_depth(&mut self, symbol_id: u32) -> Result<(), Error> {
+    pub async fn unsubscribe_depth(&self, symbol_id: u32) -> Result<(), Error> {
         let states = self
             .depth_req_states
             .lock()

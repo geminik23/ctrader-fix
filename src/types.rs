@@ -8,6 +8,16 @@ use crate::messages::ResponseMessage;
 
 pub const DELIMITER: &str = "\u{1}";
 
+// == Trade type definitions
+#[derive(Debug)]
+pub struct SymbolInformation {
+    pub id: u32,
+    pub name: String,
+    pub digits: u32,
+}
+
+// == Market type definition
+
 #[derive(Debug)]
 pub enum MarketType {
     Spot,
@@ -70,10 +80,16 @@ pub enum IncrementalRefresh {
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    // connection errors
     #[error("No connection")]
     NotConnected,
     #[error("Not logged on")]
     NotLoggedOn,
+
+    #[error("Field not found : {0}")]
+    FieldNotFoundError(Field),
+
+    // subscription errors for market client
     #[error("Failed to {2} subscription {0}: {1}")]
     SubscriptionError(u32, String, MarketType),
     #[error("Already subscribed {1} for symbol({0})")]
@@ -83,7 +99,7 @@ pub enum Error {
     #[error("Not susbscribed {1} for symbol({0})")]
     NotSubscribed(u32, MarketType),
 
-    // for internals
+    // internal errors
     #[error("Request rejected")]
     RequestRejected(ResponseMessage),
     #[error("Failed to find the response of seq num({0})")]
@@ -240,6 +256,11 @@ pub enum Field {
     GuaranteedSL = 1006,
     SymbolName = 1007,
     SymbolDigits = 1008,
+}
+impl std::fmt::Display for Field {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&format!("{:?}", self))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
