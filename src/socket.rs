@@ -12,8 +12,7 @@ use async_std::{
 
 use crate::{
     messages::ResponseMessage,
-    types::{Error, DELIMITER},
-    ConnectionHandler,
+    types::{ConnectionHandler, Error, DELIMITER},
 };
 
 pub struct Socket {

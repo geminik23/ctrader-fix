@@ -10,10 +10,9 @@ use crate::{
     fixapi::FixApi,
     messages::MarketDataReq,
     types::{
-        ConnectionHandler, Error, Field, IncrementalRefresh, MarketDataHandler, MarketType,
-        SpotPrice,
+        ConnectionHandler, DepthPrice, Error, Field, IncrementalRefresh, MarketDataHandler,
+        MarketType, SpotPrice,
     },
-    DepthPrice,
 };
 
 #[derive(Debug, PartialEq, Clone, Copy, Eq)]

@@ -1,5 +1,6 @@
 use cfix::{
-    ConnectionHandler, DepthPrice, IncrementalRefresh, MarketClient, MarketDataHandler, SpotPrice,
+    types::{ConnectionHandler, DepthPrice, IncrementalRefresh, MarketDataHandler, SpotPrice},
+    MarketClient,
 };
 use std::{collections::HashMap, env, error::Error, sync::Arc};
 

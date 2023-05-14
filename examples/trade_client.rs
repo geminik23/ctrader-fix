@@ -1,4 +1,4 @@
-use cfix::{ConnectionHandler, TradeClient};
+use cfix::{types::ConnectionHandler, TradeClient};
 use std::{env, error::Error, sync::Arc};
 
 struct Handler;
@@ -20,7 +20,7 @@ impl ConnectionHandler for Handler {
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenv::dotenv().ok();
     // env_logger::init();
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
 
     let host = env::var("CTRADER_FIX_HOST").unwrap();
     let username = env::var("CTRADER_FIX_USERNAME").unwrap();
@@ -35,7 +35,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     client.connect().await?;
     if client.is_connected() {
         let res = client.fetch_security_list().await?;
-        log::info!("{:?}", res);
+        log::info!("Secutiry list - {:?}", res);
+        //
+        // log::info!("request fetch positions");
+        let res = client.fetch_positions().await?;
+        log::info!("Positions - {:?}", res);
+
+        async_std::task::sleep(std::time::Duration::from_secs(10)).await;
     }
 
     // disconnect

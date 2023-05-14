@@ -16,6 +16,12 @@ pub struct SymbolInformation {
     pub digits: u32,
 }
 
+#[derive(Debug)]
+pub struct PositionReport {}
+
+#[derive(Debug)]
+pub struct ExecutionReport {}
+
 // == Market type definition
 
 #[derive(Debug)]

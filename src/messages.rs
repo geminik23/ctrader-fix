@@ -530,6 +530,20 @@ pub struct OrderMassStatusReq {
     pub issue_date: Option<chrono::NaiveDateTime>,
 }
 
+impl OrderMassStatusReq {
+    pub fn new(
+        mass_status_req_id: String,
+        mass_status_req_type: u32,
+        issue_date: Option<chrono::NaiveDateTime>,
+    ) -> Self {
+        Self {
+            mass_status_req_id,
+            mass_status_req_type,
+            issue_date,
+        }
+    }
+}
+
 impl RequestMessage for OrderMassStatusReq {
     fn get_body(&self, delimiter: &str, _config: &Config) -> Option<String> {
         let mut fields = vec![
