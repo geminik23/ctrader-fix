@@ -152,4 +152,32 @@ impl TradeClient {
         let res = self.fetch_response(seq_num).await?;
         parse_order_mass(res)
     }
+
+    pub async fn new_market_order(&self) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    pub async fn new_limit_order(&self) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    pub async fn replace_order(&self) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    pub async fn close_position(&self) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    pub async fn close_all_position(&self) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    pub async fn cancel_order(&self) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    pub async fn cancel_all_position(&self) -> Result<(), Error> {
+        unimplemented!()
+    }
 }

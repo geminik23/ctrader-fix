@@ -33,6 +33,17 @@ This is a Rust implementation of the FIX API for the cTrader trading platform. I
   - [x] Parsing the incremental market data in callback
   - [x] Market data handler in example code.
 - [ ] TradeClient
+  - [x] Add fetch methods
+  - [ ] Implement fetch_security_list to fetch the security list
+  - [ ] Implement fetch_positions
+  - [ ] Implement fetch_all_orders
+  - [ ] Implement new_market_order
+  - [ ] Implement new_limit_order
+  - [ ] Implement replace_order
+  - [ ] Implement close_position and close_all_position
+  - [ ] Implement cancel_order and cancel_all_position
+
+
 	
 
 
