@@ -32,7 +32,7 @@ This is a Rust implementation of the FIX API for the cTrader trading platform. I
   - [x] Parsing the depth market data in callback
   - [x] Parsing the incremental market data in callback
   - [x] Market data handler in example code.
-  - [ ] FIX : waiting constantly in subscription method when market is closed.
+  - [x] FIX callback method for subscription - ~~waiting constantly in subscription method when market is closed~~
 - [ ] FIX issue identify the resposne with sequence number
 - [ ] TradeClient
   - [x] Add fetch methods

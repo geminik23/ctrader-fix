@@ -41,6 +41,20 @@ impl MarketDataHandler for Handler {
     async fn on_market_depth_incremental_refresh(&self, refresh: Vec<IncrementalRefresh>) {
         log::info!("in handle : incremental refreush: {:?}", refresh);
     }
+
+    async fn on_accpeted_spot_subscription(&self, symbol_id: u32) {
+        log::info!("Spot subscription accepted {}", symbol_id);
+    }
+    async fn on_accpeted_depth_subscription(&self, symbol_id: u32) {
+        log::info!("Depth subscription accepted {}", symbol_id);
+    }
+
+    async fn on_rejected_spot_subscription(&self, symbol_id: u32, err_msg: String) {
+        log::info!("Spot subscription rejected {} - {}", symbol_id, err_msg);
+    }
+    async fn on_rejected_depth_subscription(&self, symbol_id: u32, err_msg: String) {
+        log::info!("Depth subscription rejected {} - {}", symbol_id, err_msg);
+    }
 }
 
 #[async_std::main]
@@ -63,93 +77,89 @@ async fn main() -> Result<(), Box<dyn Error>> {
     client.connect().await?;
     if client.is_connected() {
         let symbol_id = 11;
-        match client.subscribe_spot(symbol_id).await {
-            Ok(_) => {
-                log::info!("Success to spot subscribe the symbol_id({})", symbol_id);
-                async_std::task::sleep(std::time::Duration::from_secs(5)).await;
+        client.subscribe_spot(symbol_id).await?;
+        client.subscribe_spot(1).await?;
+        log::info!("spot subsciption requested");
+        async_std::task::sleep(std::time::Duration::from_secs(3)).await;
 
-                // try to subscription again
-                // if let Err(err) = client.subscribe_spot(symbol_id).await {
-                //     log::error!("{}", err);
-                // }
-                //
-                log::info!(
-                    "The prices of symbol_id({}) is {:?}",
-                    symbol_id,
-                    client.price_of(symbol_id).await?
-                );
+        // try to subscription again
+        // if let Err(err) = client.subscribe_spot(symbol_id).await {
+        //     log::error!("{}", err);
+        // }
+        //
+        log::info!(
+            "The prices of symbol_id({}) is {:?}",
+            symbol_id,
+            client.price_of(symbol_id).await?
+        );
 
-                log::info!(
-                    "Spot subscription list : {:?}",
-                    client.spot_subscription_list().await
-                );
+        // TEST invalid symbol
+        log::info!("Test subscription with invalid symbol");
+        client.subscribe_spot(500000).await?;
+        async_std::task::sleep(std::time::Duration::from_secs(2)).await;
 
-                client.unsubscribe_spot(symbol_id).await?;
-                log::info!("Success to spot unsubscribe the symbol_id({})", symbol_id);
+        log::info!(
+            "Spot subscription list : {:?}",
+            client.spot_subscription_list().await
+        );
 
-                // try to unsubscription again
-                // if let Err(err) = client.unsubscribe_spot(symbol_id).await {
-                //     log::error!("{}", err);
-                // }
-                //
-                log::info!(
-                    "Spot subscription list : {:?}",
-                    client.spot_subscription_list().await
-                );
-            }
-            Err(err) => {
-                log::error!(
-                    "Failed to subscribe the symbol_id({}) - {:?}",
-                    symbol_id,
-                    err
-                );
-            }
-        }
+        client.unsubscribe_spot(symbol_id).await?;
+        client.unsubscribe_spot(1).await?;
+        log::info!("Spot unsubscribed");
 
-        // depth market
-        match client.subscribe_depth(symbol_id).await {
-            Ok(_) => {
-                log::info!("Success to depth subscribe the symbol_id({})", symbol_id);
-                async_std::task::sleep(std::time::Duration::from_secs(5)).await;
+        // try to unsubscription again
+        // if let Err(err) = client.unsubscribe_spot(symbol_id).await {
+        //     log::error!("{}", err);
+        // }
+        //
+        log::info!(
+            "Spot subscription list : {:?}",
+            client.spot_subscription_list().await
+        );
+        async_std::task::sleep(std::time::Duration::from_secs(2)).await;
 
-                // try to subscription again
-                // if let Err(err) = client.subscribe_depth(symbol_id).await {
-                //     log::error!("{}", err);
-                // }
+        //
 
-                log::info!(
-                    "The depth data of symbol_id({}) is {:?}",
-                    symbol_id,
-                    client.depth_data(symbol_id).await?
-                );
+        //
 
-                log::info!(
-                    "Depth subscription list : {:?}",
-                    client.depth_subscription_list().await
-                );
-
-                // unsubscribe
-                client.unsubscribe_depth(symbol_id).await?;
-                log::info!("Success to depth unsubscribe the symbol_id({})", symbol_id);
-
-                log::info!(
-                    "Depth subscription list : {:?}",
-                    client.depth_subscription_list().await
-                );
-
-                // try to unsubscription again
-                // if let Err(err) = client.unsubscribe_depth(symbol_id).await {
-                //     log::error!("{}", err);
-                // }
-            }
-            Err(err) => {
-                log::error!(
-                    "Failed to subscribe the symbol_id({}) - {:?}",
-                    symbol_id,
-                    err
-                );
-            }
-        }
+        // // =======================================
+        // // depth market
+        // //
+        // client.subscribe_depth(symbol_id).await?;
+        // client.subscribe_depth(3).await?;
+        // log::info!("depth subsciption requested");
+        // async_std::task::sleep(std::time::Duration::from_secs(5)).await;
+        //
+        // // try to subscription again
+        // // if let Err(err) = client.subscribe_depth(symbol_id).await {
+        // //     log::error!("{}", err);
+        // // }
+        //
+        // log::info!(
+        //     "The depth data of symbol_id({}) is {:?}",
+        //     symbol_id,
+        //     client.depth_data(symbol_id).await?
+        // );
+        //
+        // log::info!(
+        //     "Depth subscription list : {:?}",
+        //     client.depth_subscription_list().await
+        // );
+        //
+        // // unsubscribe
+        // client.unsubscribe_depth(symbol_id).await?;
+        // client.unsubscribe_depth(3).await?;
+        // log::info!("Depth unsubscribed");
+        //
+        // log::info!(
+        //     "Depth subscription list : {:?}",
+        //     client.depth_subscription_list().await
+        // );
+        //
+        // // try to unsubscription again
+        // // if let Err(err) = client.unsubscribe_depth(symbol_id).await {
+        // //     log::error!("{}", err);
+        // // }
     }
 
     // disconnect

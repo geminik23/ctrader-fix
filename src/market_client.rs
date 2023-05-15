@@ -3,6 +3,8 @@ use std::{
     sync::Arc,
 };
 
+use uuid::Uuid;
+
 use async_std::sync::{Mutex, RwLock};
 use async_std::task;
 
@@ -10,15 +12,16 @@ use crate::{
     fixapi::FixApi,
     messages::MarketDataReq,
     types::{
-        ConnectionHandler, DepthPrice, Error, Field, IncrementalRefresh, MarketDataHandler,
-        MarketType, SpotPrice,
+        ConnectionHandler, DepthPrice, Error, Field, IncrementalRefresh, InternalMDResult,
+        MarketDataHandler, MarketType, SpotPrice,
     },
 };
 
-#[derive(Debug, PartialEq, Clone, Copy, Eq)]
+#[derive(Debug, PartialEq, Clone, Eq)]
 enum RequestState {
-    Requested,
+    Requested(String),
     Accepted,
+    Rejected,
 }
 
 pub struct MarketClient {
@@ -144,188 +147,261 @@ impl MarketClient {
 
         let market_data_handler = self.market_data_handler.clone();
 
-        let market_callback =
-            move |msg_type: char, symbol_id: u32, data: Vec<HashMap<Field, String>>| {
-                // symbol_id is only valid for msg_type - 'W'
+        let market_callback = move |mdresult: InternalMDResult| {
+            // symbol_id is only valid for msg_type - 'W'
 
-                let tx = trigger.clone();
-                let spot_req_states_clone = spot_req_states_clone.clone();
-                let spot_market_data_clone = spot_market_data_clone.clone();
-                let depth_req_states_clone = depth_req_states_clone.clone();
-                let depth_market_data_clone = depth_market_data_clone.clone();
+            let tx = trigger.clone();
+            let spot_req_states_clone = spot_req_states_clone.clone();
+            let spot_market_data_clone = spot_market_data_clone.clone();
+            let depth_req_states_clone = depth_req_states_clone.clone();
+            let depth_market_data_clone = depth_market_data_clone.clone();
 
-                let market_data_handler = market_data_handler.clone();
+            let market_data_handler = market_data_handler.clone();
 
-                let mtype = String::from(msg_type);
-                //
-                task::spawn(async move {
-                    match msg_type {
-                        'W' => {
-                            // check whether data is spot or depth
-                            if data.len() != 0 && !data[0].contains_key(&Field::MDEntryID) {
-                                //spot
-                                if Some(&RequestState::Requested)
-                                    == spot_req_states_clone.lock().await.get(&symbol_id)
-                                {
-                                    spot_req_states_clone
+            // let mtype = String::from(msg_type);
+            //
+            task::spawn(async move {
+                match mdresult {
+                    InternalMDResult::MD {
+                        msg_type,
+                        symbol_id,
+                        data,
+                    } => {
+                        let mtype = String::from(msg_type);
+                        match msg_type {
+                            'W' => {
+                                // check whether data is spot or depth
+                                if data.len() != 0 && !data[0].contains_key(&Field::MDEntryID) {
+                                    //spot
+                                    let requested_symbol = spot_req_states_clone
                                         .lock()
                                         .await
-                                        .insert(symbol_id, RequestState::Accepted);
+                                        .get(&symbol_id)
+                                        .map(|v| match v {
+                                            RequestState::Requested(_) => true,
+                                            _ => false,
+                                        })
+                                        .unwrap_or(false);
 
-                                    tx.send(mtype).await.unwrap_or_else(|e| {
-                                        // fatal
-                                        log::error!(
-                                            "Failed to notify that the response is received - {:?}",
-                                            e
-                                        );
-                                    });
-                                }
+                                    if requested_symbol {
+                                        spot_req_states_clone
+                                            .lock()
+                                            .await
+                                            .insert(symbol_id, RequestState::Accepted);
+                                        // to handler
+                                        if let Some(handler) = &market_data_handler {
+                                            handler.on_accpeted_spot_subscription(symbol_id).await;
+                                        }
+                                    }
 
-                                // update spot data
-                                if data.len() >= 2 {
-                                    let prices = spot_price_from_market_data(data);
+                                    // update spot data
+                                    if data.len() >= 2 {
+                                        let prices = spot_price_from_market_data(data);
 
-                                    spot_market_data_clone
+                                        spot_market_data_clone
+                                            .lock()
+                                            .await
+                                            .insert(symbol_id, prices.clone());
+
+                                        // to handler
+                                        if let Some(handler) = &market_data_handler {
+                                            handler.on_price_of(symbol_id, prices).await;
+                                        }
+                                    }
+                                } else {
+                                    // depth
+                                    let requested_symbol = depth_req_states_clone
                                         .lock()
                                         .await
-                                        .insert(symbol_id, prices.clone());
+                                        .get(&symbol_id)
+                                        .map(|v| match v {
+                                            RequestState::Requested(_) => true,
+                                            _ => false,
+                                        })
+                                        .unwrap_or(false);
 
-                                    // to handler
-                                    if let Some(handler) = market_data_handler {
-                                        handler.on_price_of(symbol_id, prices).await;
+                                    if requested_symbol {
+                                        depth_req_states_clone
+                                            .lock()
+                                            .await
+                                            .insert(symbol_id, RequestState::Accepted);
+
+                                        if let Some(handler) = &market_data_handler {
+                                            handler.on_accpeted_depth_subscription(symbol_id).await;
+                                        }
+                                    }
+
+                                    {
+                                        let depth_data = depth_data_from_entries(data);
+
+                                        // FIXME which one should be first?
+                                        // to handler
+                                        if let Some(handler) = &market_data_handler {
+                                            handler
+                                                .on_market_depth_full_refresh(
+                                                    symbol_id,
+                                                    depth_data.clone(),
+                                                )
+                                                .await;
+                                        }
+
+                                        // update the depth data
+                                        depth_market_data_clone
+                                            .write()
+                                            .await
+                                            .insert(symbol_id, depth_data);
                                     }
                                 }
-                            } else {
-                                // depth
-                                if Some(&RequestState::Requested)
+                            }
+                            'X' => {
+                                // ignore the symbol_id argument
+                                //
+                                // Market data incremental refresh
+                                if Some(&RequestState::Accepted)
                                     == depth_req_states_clone.lock().await.get(&symbol_id)
                                 {
-                                    depth_req_states_clone
-                                        .lock()
-                                        .await
-                                        .insert(symbol_id, RequestState::Accepted);
+                                    let mut incre_list = Vec::new();
+                                    for e in data.into_iter() {
+                                        let symbol =
+                                            e.get(&Field::Symbol).unwrap().parse::<u32>().unwrap();
 
-                                    tx.send(mtype).await.unwrap_or_else(|e| {
-                                        // fatal
-                                        log::error!(
-                                            "Failed to notify that the response is received - {:?}",
-                                            e
-                                        );
-                                    });
-                                }
-
-                                {
-                                    let depth_data = depth_data_from_entries(data);
+                                        match e.get(&Field::MDUpdateAction) {
+                                            Some(s) if s == "2" => {
+                                                // delete
+                                                incre_list.push(IncrementalRefresh::Delete {
+                                                    symbol_id: symbol,
+                                                    entry_id: e
+                                                        .get(&Field::MDEntryID)
+                                                        .unwrap()
+                                                        .clone(),
+                                                });
+                                            }
+                                            Some(s) if s == "0" => {
+                                                // new
+                                                let eid = e.get(&Field::MDEntryID).unwrap();
+                                                incre_list.push(IncrementalRefresh::New {
+                                                    symbol_id: symbol,
+                                                    entry_id: eid.clone(),
+                                                    data: DepthPrice {
+                                                        price_type: e
+                                                            .get(&Field::MDEntryType)
+                                                            .unwrap()
+                                                            .parse()
+                                                            .unwrap(),
+                                                        price: e
+                                                            .get(&Field::MDEntryPx)
+                                                            .unwrap()
+                                                            .parse::<f64>()
+                                                            .unwrap(),
+                                                        size: e
+                                                            .get(&Field::MDEntrySize)
+                                                            .unwrap()
+                                                            .parse::<f64>()
+                                                            .unwrap(),
+                                                    },
+                                                });
+                                            }
+                                            _ => {}
+                                        }
+                                    }
 
                                     // FIXME which one should be first?
                                     // to handler
                                     if let Some(handler) = market_data_handler {
                                         handler
-                                            .on_market_depth_full_refresh(
-                                                symbol_id,
-                                                depth_data.clone(),
-                                            )
+                                            .on_market_depth_incremental_refresh(incre_list.clone())
                                             .await;
                                     }
 
-                                    // update the depth data
-                                    depth_market_data_clone
-                                        .write()
-                                        .await
-                                        .insert(symbol_id, depth_data);
-                                }
-                            }
-                        }
-                        'X' => {
-                            // ignore the symbol_id argument
-                            //
-                            // Market data incremental refresh
-                            if Some(&RequestState::Accepted)
-                                == depth_req_states_clone.lock().await.get(&symbol_id)
-                            {
-                                let mut incre_list = Vec::new();
-                                for e in data.into_iter() {
-                                    let symbol =
-                                        e.get(&Field::Symbol).unwrap().parse::<u32>().unwrap();
-
-                                    match e.get(&Field::MDUpdateAction) {
-                                        Some(s) if s == "2" => {
-                                            // delete
-                                            incre_list.push(IncrementalRefresh::Delete {
-                                                symbol_id: symbol,
-                                                entry_id: e.get(&Field::MDEntryID).unwrap().clone(),
-                                            });
-                                        }
-                                        Some(s) if s == "0" => {
-                                            // new
-                                            let eid = e.get(&Field::MDEntryID).unwrap();
-                                            incre_list.push(IncrementalRefresh::New {
-                                                symbol_id: symbol,
-                                                entry_id: eid.clone(),
-                                                data: DepthPrice {
-                                                    price_type: e
-                                                        .get(&Field::MDEntryType)
-                                                        .unwrap()
-                                                        .parse()
-                                                        .unwrap(),
-                                                    price: e
-                                                        .get(&Field::MDEntryPx)
-                                                        .unwrap()
-                                                        .parse::<f64>()
-                                                        .unwrap(),
-                                                    size: e
-                                                        .get(&Field::MDEntrySize)
-                                                        .unwrap()
-                                                        .parse::<f64>()
-                                                        .unwrap(),
-                                                },
-                                            });
-                                        }
-                                        _ => {}
-                                    }
-                                }
-
-                                // FIXME which one should be first?
-                                // to handler
-                                if let Some(handler) = market_data_handler {
-                                    handler
-                                        .on_market_depth_incremental_refresh(incre_list.clone())
-                                        .await;
-                                }
-
-                                {
-                                    let mut depth_cont = depth_market_data_clone.write().await;
-                                    for incre in incre_list.into_iter() {
-                                        match incre {
-                                            IncrementalRefresh::New {
-                                                symbol_id,
-                                                entry_id,
-                                                data,
-                                            } => {
-                                                let s = depth_cont
-                                                    .entry(symbol_id)
-                                                    .or_insert(HashMap::new());
-                                                s.insert(entry_id, data);
-                                            }
-                                            IncrementalRefresh::Delete {
-                                                symbol_id,
-                                                entry_id,
-                                            } => {
-                                                let s = depth_cont
-                                                    .entry(symbol_id)
-                                                    .or_insert(HashMap::new());
-                                                s.remove(&entry_id);
+                                    {
+                                        let mut depth_cont = depth_market_data_clone.write().await;
+                                        for incre in incre_list.into_iter() {
+                                            match incre {
+                                                IncrementalRefresh::New {
+                                                    symbol_id,
+                                                    entry_id,
+                                                    data,
+                                                } => {
+                                                    let s = depth_cont
+                                                        .entry(symbol_id)
+                                                        .or_insert(HashMap::new());
+                                                    s.insert(entry_id, data);
+                                                }
+                                                IncrementalRefresh::Delete {
+                                                    symbol_id,
+                                                    entry_id,
+                                                } => {
+                                                    let s = depth_cont
+                                                        .entry(symbol_id)
+                                                        .or_insert(HashMap::new());
+                                                    s.remove(&entry_id);
+                                                }
                                             }
                                         }
                                     }
+                                    //
                                 }
-                                //
                             }
+                            _ => {}
                         }
-                        _ => {}
                     }
-                });
-            };
+                    InternalMDResult::MDReject {
+                        symbol_id,
+                        md_req_id,
+                        err_msg,
+                    } => {
+                        println!("asdfasdfdas");
+                        let spot_requested = spot_req_states_clone
+                            .lock()
+                            .await
+                            .values()
+                            .filter(|s| match s {
+                                RequestState::Requested(value) => value == md_req_id.as_str(),
+                                _ => false,
+                            })
+                            .count()
+                            == 1;
+                        if spot_requested {
+                            // change the state
+                            spot_req_states_clone
+                                .lock()
+                                .await
+                                .insert(symbol_id, RequestState::Rejected);
+                            // notify
+                            if let Some(handler) = &market_data_handler {
+                                handler
+                                    .on_rejected_spot_subscription(symbol_id, err_msg.clone())
+                                    .await;
+                            }
+                        }
+
+                        let depth_requested = depth_req_states_clone
+                            .lock()
+                            .await
+                            .values()
+                            .filter(|s| match s {
+                                RequestState::Requested(value) => value == md_req_id.as_str(),
+                                _ => false,
+                            })
+                            .count()
+                            == 1;
+                        if depth_requested {
+                            // change the state
+                            depth_req_states_clone
+                                .lock()
+                                .await
+                                .insert(symbol_id, RequestState::Rejected);
+                            // notify
+                            if let Some(handler) = &market_data_handler {
+                                handler
+                                    .on_rejected_depth_subscription(symbol_id, err_msg.clone())
+                                    .await;
+                            }
+                        }
+                    }
+                }
+            });
+        };
         self.internal.register_market_callback(market_callback);
     }
 
@@ -393,15 +469,17 @@ impl MarketClient {
         // FIXME later
         // .. code is too messy. is there a better way?
 
+        let mdreqid = Uuid::new_v4().to_string();
         // check already subscribed?
         if let Some(state) = self.spot_req_states.lock().await.get(&symbol_id) {
             match state {
                 RequestState::Accepted => {
                     return Err(Error::SubscribedAlready(symbol_id, MarketType::Spot));
                 }
-                RequestState::Requested => {
+                RequestState::Requested(_) => {
                     return Err(Error::RequestingSubscription(symbol_id, MarketType::Spot));
                 }
+                _ => {}
             }
         }
 
@@ -409,48 +487,11 @@ impl MarketClient {
         self.spot_req_states
             .lock()
             .await
-            .insert(symbol_id, RequestState::Requested);
+            .insert(symbol_id, RequestState::Requested(mdreqid.clone()));
 
         // intialize the request and send req
-        let req = MarketDataReq::new("-1".into(), '1', 1, None, &['0', '1'], 1, symbol_id);
+        let req = MarketDataReq::new(mdreqid, '1', 1, None, &['0', '1'], 1, symbol_id);
         let seq_num = self.internal.send_message(req).await?;
-
-        // waiting (reject or  marketdata)
-        while let Ok(mtype) = self.internal.wait_notifier().await {
-            // check the market data
-            if let Some(RequestState::Accepted) = self.spot_req_states.lock().await.get(&symbol_id)
-            {
-                // accepted
-                log::trace!("Spot data subscription accepted for symbol({})", symbol_id);
-                break;
-            }
-
-            match self.internal.check_req_accepted(seq_num).await {
-                // **No accept response for marketdata**
-                // Ok(res) => {
-                //     // accepted
-                //     break;
-                // }
-                Err(Error::RequestRejected(res)) => {
-                    log::error!("Failed to spot subscribe the symbol_id {:?}", symbol_id);
-                    self.spot_req_states.lock().await.remove(&symbol_id);
-                    return Err(Error::SubscriptionError(
-                        symbol_id,
-                        res.get_field_value(Field::Text)
-                            .expect("No Text tag in Reject response"),
-                        MarketType::Spot,
-                    ));
-                }
-                _ => {
-                    // FIXME is it necessary?
-                    // no response
-                    // retrigger
-                    if let Err(err) = self.internal.trigger.send(mtype).await {
-                        return Err(Error::TriggerError(err));
-                    }
-                }
-            }
-        }
 
         Ok(())
     }
@@ -462,13 +503,13 @@ impl MarketClient {
             .lock()
             .await
             .get(&symbol_id)
-            .map(|v| *v);
+            .map(|v| v.clone());
 
         match states {
-            Some(RequestState::Requested) => {
+            Some(RequestState::Requested(_)) => {
                 return Err(Error::RequestingSubscription(symbol_id, MarketType::Spot));
             }
-            None => {
+            Some(RequestState::Rejected) | None => {
                 return Err(Error::NotSubscribed(symbol_id, MarketType::Spot));
             }
             _ => {
@@ -479,22 +520,23 @@ impl MarketClient {
 
                 log::trace!("Unsubscribed spot for symbol({})", symbol_id);
 
-                // no need to wait
                 Ok(())
             }
         }
     }
 
     pub async fn subscribe_depth(&self, symbol_id: u32) -> Result<(), Error> {
+        let mdreqid = Uuid::new_v4().to_string();
         // check already subscribed?
         if let Some(state) = self.depth_req_states.lock().await.get(&symbol_id) {
             match state {
                 RequestState::Accepted => {
                     return Err(Error::SubscribedAlready(symbol_id, MarketType::Depth));
                 }
-                RequestState::Requested => {
+                RequestState::Requested(_) => {
                     return Err(Error::RequestingSubscription(symbol_id, MarketType::Depth));
                 }
+                _ => {}
             }
         }
 
@@ -502,42 +544,11 @@ impl MarketClient {
         self.depth_req_states
             .lock()
             .await
-            .insert(symbol_id, RequestState::Requested);
+            .insert(symbol_id, RequestState::Requested(mdreqid.clone()));
 
         // intialize the request and send req
-        let req = MarketDataReq::new("-1".into(), '1', 0, None, &['0', '1'], 1, symbol_id);
+        let req = MarketDataReq::new(mdreqid, '1', 0, None, &['0', '1'], 1, symbol_id);
         let seq_num = self.internal.send_message(req).await?;
-
-        // waiting (reject or  marketdata)
-        while let Ok(mtype) = self.internal.wait_notifier().await {
-            // check the market data
-            if let Some(RequestState::Accepted) = self.depth_req_states.lock().await.get(&symbol_id)
-            {
-                // accepted
-                log::trace!("Depth data subscription accepted for symbol({})", symbol_id);
-                break;
-            }
-
-            match self.internal.check_req_accepted(seq_num).await {
-                Err(Error::RequestRejected(res)) => {
-                    log::error!("Failed to depth subscribe the symbol_id {:?}", symbol_id);
-                    self.depth_req_states.lock().await.remove(&symbol_id);
-                    return Err(Error::SubscriptionError(
-                        symbol_id,
-                        res.get_field_value(Field::Text)
-                            .expect("No Text tag in Reject response"),
-                        MarketType::Depth,
-                    ));
-                }
-                _ => {
-                    // no response
-                    // retrigger
-                    if let Err(err) = self.internal.trigger.send(mtype).await {
-                        return Err(Error::TriggerError(err));
-                    }
-                }
-            }
-        }
 
         Ok(())
     }
@@ -548,13 +559,13 @@ impl MarketClient {
             .lock()
             .await
             .get(&symbol_id)
-            .map(|v| *v);
+            .map(|v| v.clone());
 
         match states {
-            Some(RequestState::Requested) => {
+            Some(RequestState::Requested(_)) => {
                 return Err(Error::RequestingSubscription(symbol_id, MarketType::Depth));
             }
-            None => {
+            Some(RequestState::Rejected) | None => {
                 return Err(Error::NotSubscribed(symbol_id, MarketType::Depth));
             }
             _ => {

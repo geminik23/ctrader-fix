@@ -16,7 +16,7 @@ use async_std::{
     task,
 };
 
-use crate::types::{Config, Error, Field, SubID, DELIMITER};
+use crate::types::{Config, Error, Field, InternalMDResult, SubID, DELIMITER};
 use crate::{
     messages::{HeartbeatReq, LogonReq, LogoutReq, RequestMessage, ResponseMessage, TestReq},
     types::ConnectionHandler,
@@ -75,13 +75,11 @@ impl FixApi {
 
     pub fn register_market_callback<F>(&mut self, callback: F)
     where
-        F: Fn(char, u32, Vec<HashMap<Field, String>>) -> () + Send + Sync + 'static,
+        F: Fn(InternalMDResult) -> () + Send + Sync + 'static,
     {
-        self.market_callback = Some(Arc::new(
-            move |msg_type: char, symbol_id: u32, data: Vec<HashMap<Field, String>>| -> () {
-                callback(msg_type, symbol_id, data)
-            },
-        ));
+        self.market_callback = Some(Arc::new(move |mdresult: InternalMDResult| -> () {
+            callback(mdresult)
+        }));
     }
 
     pub fn register_connection_handler_arc<T: ConnectionHandler + Send + Sync + 'static>(
@@ -273,7 +271,7 @@ impl FixApi {
                                             log::error!(
                                             "Failed to notify that the response is received - {:?}",
                                             e
-                                        );
+                                            );
                                         });
                                     }
                                     "1" => {
@@ -286,30 +284,47 @@ impl FixApi {
                                             log::debug!("Sent the heartbeat from test_req_id");
                                         }
                                     }
-                                    "W" | "X" => {
+                                    "W" | "X" | "Y" => {
                                         // market data
                                         let symbol_id = res
                                             .get_field_value(Field::Symbol)
-                                            .expect("Failed to find the Symbol tag")
+                                            .unwrap_or("0".into())
                                             .parse::<u32>()
                                             .unwrap();
                                         // notify to callback
                                         if let Some(market_callback) = market_callback.clone() {
-                                            let data = res.get_repeating_groups(
-                                                Field::NoMDEntries,
-                                                if msg_type == "W" {
-                                                    Field::MDEntryType
-                                                } else {
-                                                    Field::MDUpdateAction
-                                                },
-                                                None,
-                                            );
+                                            let mdresult = if msg_type == "Y" {
+                                                let md_req_id = res
+                                                    .get_field_value(Field::MDReqID)
+                                                    .map(|v| v.clone())
+                                                    .unwrap_or("".into());
+                                                let err_msg = res
+                                                    .get_field_value(Field::Text)
+                                                    .map(|v| v.clone())
+                                                    .unwrap_or("".into());
+                                                InternalMDResult::MDReject {
+                                                    symbol_id,
+                                                    md_req_id,
+                                                    err_msg,
+                                                }
+                                            } else {
+                                                let data = res.get_repeating_groups(
+                                                    Field::NoMDEntries,
+                                                    if msg_type == "W" {
+                                                        Field::MDEntryType
+                                                    } else {
+                                                        Field::MDUpdateAction
+                                                    },
+                                                    None,
+                                                );
+                                                InternalMDResult::MD {
+                                                    msg_type: msg_type.chars().next().unwrap(),
+                                                    symbol_id,
+                                                    data,
+                                                }
+                                            };
 
-                                            market_callback(
-                                                msg_type.chars().next().unwrap(),
-                                                symbol_id,
-                                                data,
-                                            );
+                                            market_callback(mdresult);
                                         }
                                     }
                                     _ => {

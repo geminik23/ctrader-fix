@@ -8,6 +8,30 @@ use crate::messages::ResponseMessage;
 
 pub const DELIMITER: &str = "\u{1}";
 
+#[async_trait]
+pub trait ConnectionHandler {
+    async fn on_connect(&self);
+    async fn on_logon(&self);
+    async fn on_disconnect(&self);
+}
+
+#[async_trait]
+pub trait MarketDataHandler {
+    async fn on_price_of(&self, symbol_id: u32, price: SpotPrice);
+    async fn on_market_depth_full_refresh(
+        &self,
+        symbol_id: u32,
+        full_depth: HashMap<String, DepthPrice>,
+    );
+    async fn on_market_depth_incremental_refresh(&self, refresh: Vec<IncrementalRefresh>);
+
+    async fn on_accpeted_spot_subscription(&self, symbol_id: u32);
+    async fn on_accpeted_depth_subscription(&self, symbol_id: u32);
+
+    async fn on_rejected_spot_subscription(&self, symbol_id: u32, err_msg: String);
+    async fn on_rejected_depth_subscription(&self, symbol_id: u32, err_msg: String);
+}
+
 // == Trade type definitions
 #[derive(Debug)]
 pub struct SymbolInformation {
@@ -124,8 +148,21 @@ pub enum Error {
 
 //
 // only for internal
-pub type MarketCallback = Arc<dyn Fn(char, u32, Vec<HashMap<Field, String>>) -> () + Send + Sync>;
+pub type MarketCallback = Arc<dyn Fn(InternalMDResult) -> () + Send + Sync>;
 //
+
+pub enum InternalMDResult {
+    MD {
+        msg_type: char,
+        symbol_id: u32,
+        data: Vec<HashMap<Field, String>>,
+    },
+    MDReject {
+        symbol_id: u32,
+        md_req_id: String,
+        err_msg: String,
+    },
+}
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
@@ -153,25 +190,6 @@ impl Config {
         }
     }
 }
-
-#[async_trait]
-pub trait ConnectionHandler {
-    async fn on_connect(&self);
-    async fn on_logon(&self);
-    async fn on_disconnect(&self);
-}
-
-#[async_trait]
-pub trait MarketDataHandler {
-    async fn on_price_of(&self, symbol_id: u32, price: SpotPrice);
-    async fn on_market_depth_full_refresh(
-        &self,
-        symbol_id: u32,
-        full_depth: HashMap<String, DepthPrice>,
-    );
-    async fn on_market_depth_incremental_refresh(&self, refresh: Vec<IncrementalRefresh>);
-}
-
 #[repr(u32)]
 #[derive(Debug, PartialEq, TryFromPrimitive, IntoPrimitive, Clone, Eq, Hash, Copy)]
 pub enum Field {
