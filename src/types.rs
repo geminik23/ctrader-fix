@@ -56,35 +56,175 @@ pub struct PositionReport {
 }
 
 #[derive(Debug)]
-pub struct NewOrderReport {
-    pub symbol: u32,
-    pub price: Option<f64>,
-    pub stop_px: Option<f64>,
-    pub order_qty: f64,
-    pub order_status: OrderStatus,
-    pub order_type: OrderType,
-    pub side: Side,
-    pub time_in_force: String,
-    pub transact_time: NaiveDateTime,
-    pub leaves_qty: f64,
-    pub pos_main_rept_id: String,
+pub enum ExecutionType {
+    OrderStatus,
+    New,
+    Canceled,
+    Replace,
+    Rejected,
+    Expired,
+    Trade,
+}
+
+impl FromStr for ExecutionType {
+    type Err = ParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "0" => Ok(ExecutionType::New),
+            "4" => Ok(ExecutionType::Canceled),
+            "5" => Ok(ExecutionType::Replace),
+            "8" => Ok(ExecutionType::Rejected),
+            "C" => Ok(ExecutionType::Expired),
+            "F" => Ok(ExecutionType::Trade),
+            "I" => Ok(ExecutionType::New),
+            _ => Err(ParseError(s.into())),
+        }
+    }
 }
 
 #[derive(Debug)]
-pub struct OrderStatusReport {
-    pub symbol: u32,
-    pub order_id: String,
-    pub cum_qty: f64,
-    pub order_qty: f64,
-    pub leaves_qty: f64,
-    pub order_status: OrderStatus,
-    pub order_type: OrderType,
-    pub price: f64,
-    pub side: Side,
-    pub time_in_force: String,
-    pub transact_time: NaiveDateTime,
-    pub pos_main_rept_id: String,
+pub struct ExeuctionReport {
+    /// 150.
+    pub exec_type: ExecutionType,
+    pub order_report: OrderReport,
 }
+
+#[derive(Debug)]
+pub struct OrderReport {
+    /// Instrument identificators are provided by Spotware. 55
+    pub symbol: u32,
+    /// cTrader order id. 37
+    pub order_id: String,
+    /// Unique identifier for the order, allocated by the client. 11
+    pub cl_ord_id: String,
+    /// Position ID. 72
+    pub pos_main_rept_id: String,
+    /// Client custom order label. 494
+    pub designation: Option<String>,
+
+    /// Order status. 39
+    pub order_status: OrderStatus,
+    /// Order type : Marekt, Limit, Stop, Stop limit. 40
+    pub order_type: OrderType,
+    /// 54.
+    pub side: Side,
+
+    //** price **//
+    /// If supplied in the NewOrderSingle, it is echoed back in this ExecutionReport. 44
+    pub price: Option<f64>,
+    /// If supplied in the NewOrderSingle, it is echoed back in this ExecutionReport. 99
+    pub stop_px: Option<f64>,
+    /// The price at which the deal was filled. For an IOC or GTD order, this is the VWAP (Volume Weighted Average Price) of the filled order. 6
+    pub avx_px: Option<f64>,
+
+    /// The absolute price at which Take Profit will be triggered. 1000
+    pub absolute_tp: Option<f64>,
+    /// The distance in pips from the entry price at which the Take Profit will be triggered. 1001
+    pub reltative_tp: Option<f64>,
+    /// The absolute price at which Stop Loss will be triggered. 1002
+    pub absolute_sl: Option<f64>,
+    /// The distance in pips from the entry price at which the Stop Loss will be triggered. 1003
+    pub reltative_sl: Option<f64>,
+    /// Indicates if Stop Loss is trailing. 1004
+    pub trailing_sl: Option<bool>,
+    /// Indicated trigger method of the Stop Loss. 1005
+    ///
+    /// 1 = The Stop Loss will be triggered by the trade side.
+    /// 2 = The stop loss will be triggered by the opposite side (Ask for Buy positions and by Bid for Sell positions),
+    /// 3 = Stop Loss will be triggered after two consecutive ticks according to the trade side.
+    /// 4 = Stop Loss will be triggered after two consecutive ticks according to the opposite side (second Ask tick for Buy positions and second Bid tick for Sell positions).
+    pub trigger_method_sl: Option<u32>,
+    /// Indicates if Stop Loss is guaranteed. 1006
+    pub guaranteed_sl: Option<bool>,
+
+    /// The total amount of the order which has been filled. 14
+    pub cum_qty: Option<f64>,
+    /// Number of shares ordered. This represents the number of shares for equities or based on normal convention the number of contracts for options, futures, convertible bonds, etc. 38
+    pub order_qty: f64,
+    /// The amount of the order still to be filled. This is a value between 0 (fully filled) and OrderQty (partially filled). 151
+    pub leaves_qty: f64,
+    /// The bought/sold amount of the order which has been filled on this (last) fill. 32
+    pub last_qty: Option<f64>,
+
+    // FIXME
+    /// 59
+    /// 1 = Good Till Cancel (GTC);
+    /// 3 = Immediate Or Cancel (IOC);
+    /// 6 = Good Till Date (GTD).
+    pub time_in_force: String,
+    /// Time the transaction represented by this ExecutionReport occurred message (in UTC). 60
+    pub transact_time: NaiveDateTime,
+    /// If supplied in the NewOrderSingle, it is echoed back in this ExecutionReport. 126
+    pub expire_time: Option<NaiveDateTime>,
+
+    /// Where possible, message to explain execution report. 58
+    pub text: Option<String>,
+    // /// 103
+    // pub ord__rej_reason: Option<u32>,
+    // /// MassStatusReqID. 584
+    // pub masss_status_req_id: Option<String>,
+}
+
+#[repr(u32)]
+#[derive(Debug, TryFromPrimitive)]
+pub enum TimeInForce {
+    GoodTillCancel = 1,
+    ImmediateOrCancel = 3,
+    GoodTillDate = 6,
+}
+
+// #[derive(Debug)]
+// pub struct NewOrderReport {
+//     pub symbol: u32,
+//     pub order_id: String,
+//     pub price: Option<f64>,
+//     pub stop_px: Option<f64>,
+//     pub cum_qty: f64,
+//     pub order_qty: f64,
+//     pub leaves_qty: f64,
+//     pub order_status: OrderStatus,
+//     pub order_type: OrderType,
+//
+//     pub side: Side,
+//     pub time_in_force: String,
+//     pub transact_time: NaiveDateTime,
+//     pub pos_main_rept_id: String,
+// }
+//
+// #[derive(Debug)]
+// pub struct OrderTradeReport {
+//     pub symbol: u32,
+//     pub order_id: String,
+//     pub price: Option<f64>,
+//     pub stop_px: Option<f64>,
+//     pub avx_px: f64, // req
+//     pub order_qty: f64,
+//     pub leaves_qty: f64,
+//     pub order_status: OrderStatus,
+//     pub order_type: OrderType,
+//
+//     pub side: Side,
+//     pub time_in_force: String,
+//     pub transact_time: NaiveDateTime,
+//     pub pos_main_rept_id: String,
+// }
+//
+// #[derive(Debug)]
+// pub struct OrderStatusReport {
+//     pub symbol: u32,
+//     pub order_id: String,
+//     pub price: f64,
+//     pub cum_qty: f64,
+//     pub order_qty: f64,
+//     pub leaves_qty: f64,
+//     pub order_status: OrderStatus,
+//     pub order_type: OrderType,
+//
+//     pub side: Side,
+//     pub time_in_force: String,
+//     pub transact_time: NaiveDateTime,
+//     pub pos_main_rept_id: String,
+// }
 
 #[derive(Debug)]
 pub enum OrderStatus {
@@ -113,30 +253,6 @@ impl FromStr for OrderStatus {
         }
     }
 }
-
-// #[derive(Debug)]
-// pub enum ExeuctionReport {
-//     /// ExecType = 'I'
-//     OrderStatus {},
-//
-//     // not implemented
-//     New(ResponseMessage),
-//     Canceled(ResponseMessage),
-//     Replace(ResponseMessage),
-//     Rejected(ResponseMessage),
-//     Expired(ResponseMessage),
-//     Trade(ResponseMessage),
-// }
-//
-// #[derive(Debug)]
-// pub struct ExecutionReport {
-//     order_id: String,
-//     cl_ord_id: Option<String>,
-//     exec_type: char,    //
-//     order_status: char, //
-//     symbol: u32,
-//     side: Side,
-// }
 
 // == Market type definition
 

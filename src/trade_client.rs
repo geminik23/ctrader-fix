@@ -1,4 +1,4 @@
-use chrono::{NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use uuid::Uuid;
 
 use crate::{
@@ -8,8 +8,8 @@ use crate::{
     },
     parse_func,
     types::{
-        ConnectionHandler, Error, Field, NewOrderReport, OrderStatusReport, OrderType,
-        PositionReport, Side, SymbolInformation, DELIMITER,
+        ConnectionHandler, Error, ExeuctionReport, Field, OrderType, PositionReport, Side,
+        SymbolInformation, DELIMITER,
     },
 };
 use std::{collections::HashMap, sync::Arc};
@@ -143,7 +143,7 @@ impl TradeClient {
     pub async fn fetch_all_order_status(
         &self,
         issue_data: Option<NaiveDateTime>,
-    ) -> Result<Vec<OrderStatusReport>, Error> {
+    ) -> Result<Vec<ExeuctionReport>, Error> {
         let mass_status_req_id = self.create_unique_id();
         // FIXME if mass_status_req_id is not 7, then return 'j' but response does not include the mass_status_req_id
         let req = OrderMassStatusReq::new(mass_status_req_id.clone(), 7, issue_data);
@@ -176,7 +176,7 @@ impl TradeClient {
                     .filter(|r| r.get_field_value(Field::MsgType).unwrap() == "8")
                     .next()
                 {
-                    return parse_func::parse_order_status(res);
+                    return parse_func::parse_order_mass_status(res);
                 }
 
                 // let res = res.first().unwrap();
@@ -190,7 +190,7 @@ impl TradeClient {
         // parse_order_mass(res)
     }
 
-    async fn new_order(&self, req: NewOrderSingleReq) -> Result<NewOrderReport, Error> {
+    async fn new_order(&self, req: NewOrderSingleReq) -> Result<ExeuctionReport, Error> {
         let cl_ord_id = req.cl_ord_id.clone();
 
         self.internal.send_message(req).await?;
@@ -218,7 +218,7 @@ impl TradeClient {
                     .filter(|r| r.get_field_value(Field::MsgType).unwrap() == "8")
                     .next()
                 {
-                    return parse_func::parse_new_order_report(res);
+                    return parse_func::parse_execution_report(res);
                 }
                 //
                 Err(Error::UnknownError)
@@ -236,7 +236,7 @@ impl TradeClient {
         pos_id: Option<String>,
         transact_time: Option<NaiveDateTime>,
         custom_ord_label: Option<String>,
-    ) -> Result<NewOrderReport, Error> {
+    ) -> Result<ExeuctionReport, Error> {
         let req = NewOrderSingleReq::new(
             cl_ord_id.unwrap_or(self.create_unique_id()),
             symbol,
@@ -264,7 +264,7 @@ impl TradeClient {
         expire_time: Option<NaiveDateTime>,
         transact_time: Option<NaiveDateTime>,
         custom_ord_label: Option<String>,
-    ) -> Result<NewOrderReport, Error> {
+    ) -> Result<ExeuctionReport, Error> {
         let req = NewOrderSingleReq::new(
             cl_ord_id.unwrap_or(self.create_unique_id()),
             symbol,
@@ -293,7 +293,7 @@ impl TradeClient {
         expire_time: Option<NaiveDateTime>,
         transact_time: Option<NaiveDateTime>,
         custom_ord_label: Option<String>,
-    ) -> Result<NewOrderReport, Error> {
+    ) -> Result<ExeuctionReport, Error> {
         let req = NewOrderSingleReq::new(
             cl_ord_id.unwrap_or(self.create_unique_id()),
             symbol,

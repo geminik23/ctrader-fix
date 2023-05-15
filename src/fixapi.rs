@@ -278,7 +278,7 @@ impl FixApi {
                                         tx.send(mtype).await.unwrap_or_else(|e| {
                                             // fatal
                                             log::error!(
-                                            "Failed to notify that the response is received - {:?}",
+                                            "Failed to notify that Logout tag is received - {:?}",
                                             e
                                             );
                                         });

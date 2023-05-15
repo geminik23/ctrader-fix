@@ -3,8 +3,8 @@ use chrono::NaiveDateTime;
 use crate::{
     messages::ResponseMessage,
     types::{
-        Error, Field, NewOrderReport, OrderStatus, OrderStatusReport, OrderType, PositionReport,
-        Side, SymbolInformation, DELIMITER,
+        Error, ExecutionType, ExeuctionReport, Field, OrderReport, OrderStatus, OrderType,
+        PositionReport, Side, SymbolInformation, DELIMITER,
     },
 };
 
@@ -103,54 +103,103 @@ pub fn parse_positions(res: &ResponseMessage) -> Result<Vec<PositionReport>, Err
 }
 
 //
-// ORDERs
+// ORDER
 //
+pub fn parse_execution_report(res: ResponseMessage) -> Result<ExeuctionReport, Error> {
+    Ok(ExeuctionReport {
+        exec_type: res
+            .get_field_value(Field::ExecType)
+            .unwrap()
+            .parse::<ExecutionType>()
+            .unwrap(),
+        order_report: OrderReport {
+            symbol: res
+                .get_field_value(Field::Symbol)
+                .unwrap_or("0".into())
+                .parse::<u32>()
+                .unwrap(),
+            order_id: res.get_field_value(Field::OrderID).unwrap(),
+            cl_ord_id: res.get_field_value(Field::ClOrdId).unwrap(),
+            pos_main_rept_id: res.get_field_value(Field::PosMaintRptID).unwrap(),
+            designation: res.get_field_value(Field::Designation),
 
-pub fn parse_new_order_report(res: ResponseMessage) -> Result<NewOrderReport, Error> {
-    Ok(NewOrderReport {
-        symbol: res
-            .get_field_value(Field::Symbol)
-            .unwrap_or("0".into())
-            .parse::<u32>()
-            .unwrap(),
-        price: res
-            .get_field_value(Field::Price)
-            .map(|v| v.parse::<f64>().unwrap()),
-        stop_px: res
-            .get_field_value(Field::StopPx)
-            .map(|v| v.parse::<f64>().unwrap()),
-        order_qty: res
-            .get_field_value(Field::OrderQty)
-            .unwrap_or("0.0".into())
-            .parse::<f64>()
-            .unwrap(),
-        order_status: res
-            .get_field_value(Field::OrdStatus)
-            .map(|v| v.parse::<OrderStatus>().unwrap())
-            .unwrap(),
-        order_type: res
-            .get_field_value(Field::OrdType)
-            .map(|v| v.parse::<OrderType>().unwrap())
-            .unwrap(),
-        side: res
-            .get_field_value(Field::Side)
-            .map(|v| Side::try_from(v.parse::<u32>().unwrap()).unwrap())
-            .unwrap(),
-        time_in_force: res.get_field_value(Field::TimeInForce).unwrap(),
-        transact_time: res
-            .get_field_value(Field::TransactTime)
-            .map(|v| NaiveDateTime::parse_from_str(v.as_str(), "%Y%m%d-%H:%M:%S%.3f").unwrap())
-            .unwrap(),
-        leaves_qty: res
-            .get_field_value(Field::LeavesQty)
-            .unwrap_or("0.0".into())
-            .parse::<f64>()
-            .unwrap(),
-        pos_main_rept_id: res.get_field_value(Field::PosMaintRptID).unwrap(),
+            order_status: res
+                .get_field_value(Field::OrdStatus)
+                .map(|v| v.parse::<OrderStatus>().unwrap())
+                .unwrap(),
+            order_type: res
+                .get_field_value(Field::OrdType)
+                .map(|v| v.parse::<OrderType>().unwrap())
+                .unwrap(),
+            side: res
+                .get_field_value(Field::Side)
+                .map(|v| Side::try_from(v.parse::<u32>().unwrap()).unwrap())
+                .unwrap(),
+
+            price: res
+                .get_field_value(Field::Price)
+                .map(|v| v.parse::<f64>().unwrap()),
+            stop_px: res
+                .get_field_value(Field::StopPx)
+                .map(|v| v.parse::<f64>().unwrap()),
+            avx_px: res
+                .get_field_value(Field::AvgPx)
+                .map(|v| v.parse::<f64>().unwrap()),
+
+            absolute_tp: res
+                .get_field_value(Field::AbsoluteTP)
+                .map(|v| v.parse::<f64>().unwrap()),
+            reltative_tp: res
+                .get_field_value(Field::RelativeTP)
+                .map(|v| v.parse::<f64>().unwrap()),
+            absolute_sl: res
+                .get_field_value(Field::AbsoluteSL)
+                .map(|v| v.parse::<f64>().unwrap()),
+            reltative_sl: res
+                .get_field_value(Field::RelativeSL)
+                .map(|v| v.parse::<f64>().unwrap()),
+            trailing_sl: res
+                .get_field_value(Field::TrailingSL)
+                .map(|v| v.parse::<bool>().unwrap()),
+            trigger_method_sl: res
+                .get_field_value(Field::TriggerMethodSL)
+                .map(|v| v.parse::<u32>().unwrap()),
+            guaranteed_sl: res
+                .get_field_value(Field::GuaranteedSL)
+                .map(|v| v.parse::<bool>().unwrap()),
+
+            cum_qty: res
+                .get_field_value(Field::CumQty)
+                .map(|v| v.parse::<f64>().unwrap()),
+            order_qty: res
+                .get_field_value(Field::OrderQty)
+                .unwrap_or("0.0".into())
+                .parse::<f64>()
+                .unwrap(),
+            leaves_qty: res
+                .get_field_value(Field::LeavesQty)
+                .unwrap_or("0.0".into())
+                .parse::<f64>()
+                .unwrap(),
+            last_qty: res
+                .get_field_value(Field::OrderQty)
+                .map(|v| v.parse::<f64>().unwrap()),
+
+            time_in_force: res.get_field_value(Field::TimeInForce).unwrap(),
+            transact_time: res
+                .get_field_value(Field::TransactTime)
+                .map(|v| NaiveDateTime::parse_from_str(v.as_str(), "%Y%m%d-%H:%M:%S%.3f").unwrap())
+                .unwrap(),
+            expire_time: res
+                .get_field_value(Field::ExpireTime)
+                .map(|v| NaiveDateTime::parse_from_str(v.as_str(), "%Y%m%d-%H:%M:%S%.3f").unwrap()),
+
+            text: res.get_field_value(Field::Text),
+        },
     })
 }
 
-pub fn parse_order_status(res: ResponseMessage) -> Result<Vec<OrderStatusReport>, Error> {
+pub fn parse_order_mass_status(res: ResponseMessage) -> Result<Vec<ExeuctionReport>, Error> {
     let npos = res
         .get_field_value(Field::TotNumReports)
         .unwrap_or("0".into())
@@ -174,57 +223,6 @@ pub fn parse_order_status(res: ResponseMessage) -> Result<Vec<OrderStatusReport>
 
     Ok(raw_res
         .into_iter()
-        .map(|res| {
-            // match res.into
-            //
-            OrderStatusReport {
-                symbol: res
-                    .get_field_value(Field::Symbol)
-                    .unwrap_or("0".into())
-                    .parse::<u32>()
-                    .unwrap(),
-                order_id: res.get_field_value(Field::OrderID).unwrap(),
-                cum_qty: res
-                    .get_field_value(Field::CumQty)
-                    .unwrap_or("0.0".into())
-                    .parse::<f64>()
-                    .unwrap(),
-                order_qty: res
-                    .get_field_value(Field::OrderQty)
-                    .unwrap_or("0.0".into())
-                    .parse::<f64>()
-                    .unwrap(),
-                leaves_qty: res
-                    .get_field_value(Field::LeavesQty)
-                    .unwrap_or("0.0".into())
-                    .parse::<f64>()
-                    .unwrap(),
-                order_status: res
-                    .get_field_value(Field::OrdStatus)
-                    .map(|v| v.parse::<OrderStatus>().unwrap())
-                    .unwrap(),
-                order_type: res
-                    .get_field_value(Field::OrdType)
-                    .map(|v| v.parse::<OrderType>().unwrap())
-                    .unwrap(),
-                price: res
-                    .get_field_value(Field::Price)
-                    .unwrap_or("0.0".into())
-                    .parse::<f64>()
-                    .unwrap(),
-                side: res
-                    .get_field_value(Field::Side)
-                    .map(|v| Side::try_from(v.parse::<u32>().unwrap()).unwrap())
-                    .unwrap(),
-                time_in_force: res.get_field_value(Field::TimeInForce).unwrap(),
-                transact_time: res
-                    .get_field_value(Field::TransactTime)
-                    .map(|v| {
-                        NaiveDateTime::parse_from_str(v.as_str(), "%Y%m%d-%H:%M:%S%.3f").unwrap()
-                    })
-                    .unwrap(),
-                pos_main_rept_id: res.get_field_value(Field::PosMaintRptID).unwrap(),
-            }
-        })
+        .map(|res| parse_execution_report(res).unwrap())
         .collect::<Vec<_>>())
 }
