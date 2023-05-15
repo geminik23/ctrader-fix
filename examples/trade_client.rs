@@ -44,11 +44,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let res = client.fetch_positions().await?;
         log::info!("Positions - {:?}", res);
 
-        log::info!("New market order");
-        let res = client
-            .new_market_order(1, Side::BUY, 0.01, None, None, None, None)
-            .await?;
-        async_std::task::sleep(std::time::Duration::from_secs(5)).await;
+        // log::info!("New market order");
+        // let res = client
+        //     .new_market_order(1, Side::BUY, 0.01, None, None, None, None)
+        //     .await?;
+        // async_std::task::sleep(std::time::Duration::from_secs(5)).await;
     }
 
     // disconnect

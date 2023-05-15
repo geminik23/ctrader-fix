@@ -167,7 +167,6 @@ impl MarketClient {
                         symbol_id,
                         data,
                     } => {
-                        let mtype = String::from(msg_type);
                         match msg_type {
                             'W' => {
                                 // check whether data is spot or depth
@@ -491,7 +490,7 @@ impl MarketClient {
 
         // intialize the request and send req
         let req = MarketDataReq::new(mdreqid, '1', 1, None, &['0', '1'], 1, symbol_id);
-        let seq_num = self.internal.send_message(req).await?;
+        self.internal.send_message(req).await?;
 
         Ok(())
     }
@@ -548,7 +547,7 @@ impl MarketClient {
 
         // intialize the request and send req
         let req = MarketDataReq::new(mdreqid, '1', 0, None, &['0', '1'], 1, symbol_id);
-        let seq_num = self.internal.send_message(req).await?;
+        self.internal.send_message(req).await?;
 
         Ok(())
     }
@@ -572,7 +571,7 @@ impl MarketClient {
                 self.depth_req_states.lock().await.remove(&symbol_id);
                 self.depth_market_data.write().await.remove(&symbol_id);
                 let req = MarketDataReq::new("-1".into(), '2', 0, None, &['0', '1'], 1, symbol_id);
-                let _seq_num = self.internal.send_message(req).await?;
+                self.internal.send_message(req).await?;
 
                 log::trace!("Unsubscribed depth for symbol({})", symbol_id);
 
