@@ -48,7 +48,7 @@ impl FixApi {
         host: String,
         login: String,
         password: String,
-        broker: String,
+        sender_comp_id: String,
         heartbeat_interval: Option<u32>,
     ) -> Self {
         let (tx, rx) = bounded(1);
@@ -57,7 +57,7 @@ impl FixApi {
                 host,
                 login,
                 password,
-                broker,
+                sender_comp_id,
                 heartbeat_interval.unwrap_or(30),
             ),
             stream: None,
@@ -172,8 +172,9 @@ impl FixApi {
         //check the seq no
         if let Some(res) = cont.remove(&seq_num) {
             // rejected
-            if res.get_message_type() == "3" {
-                log::debug!("Got rejected to subscribe");
+            let msg_type = res.get_message_type();
+            if msg_type == "3" || msg_type == "j" {
+                log::debug!("Got rejected");
                 return Err(Error::RequestRejected(res));
             }
             Ok(res)

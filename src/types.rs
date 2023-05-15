@@ -132,7 +132,7 @@ pub struct Config {
     pub host: String,
     pub username: String,
     pub password: String,
-    pub broker: String,
+    pub sender_comp_id: String,
     pub heart_beat: u32,
 }
 
@@ -141,14 +141,14 @@ impl Config {
         host: String,
         username: String,
         password: String,
-        broker: String,
+        sender_comp_id: String,
         heart_beat: u32,
     ) -> Self {
         Self {
             host,
             username,
             password,
-            broker,
+            sender_comp_id,
             heart_beat,
         }
     }

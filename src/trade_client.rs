@@ -1,10 +1,16 @@
-use std::sync::Arc;
+use chrono::{NaiveDateTime, Utc};
 
 use crate::{
     fixapi::FixApi,
-    messages::{OrderMassStatusReq, PositionsReq, ResponseMessage, SecurityListReq},
-    types::{ConnectionHandler, Error, ExecutionReport, Field, PositionReport, SymbolInformation},
+    messages::{
+        NewOrderSingleReq, OrderMassStatusReq, PositionsReq, ResponseMessage, SecurityListReq,
+    },
+    types::{
+        ConnectionHandler, Error, ExecutionReport, Field, OrderType, PositionReport, Side,
+        SymbolInformation,
+    },
 };
+use std::sync::Arc;
 
 pub struct TradeClient {
     internal: FixApi,
@@ -38,14 +44,16 @@ fn parse_security_list(res: ResponseMessage) -> Result<Vec<SymbolInformation>, E
 }
 
 fn parse_positions(res: ResponseMessage) -> Result<Vec<PositionReport>, Error> {
+    println!("{:?}", res);
     let pos_list = res.get_repeating_groups(Field::TotalNumPosReports, Field::PosReqResult, None);
     let mut result = Vec::new();
     for pos in pos_list.into_iter() {
         let pos_req_result = pos.get(&Field::PosReqResult).unwrap();
+        // TODO
+        // println!("{:?}", pos);
         if pos_req_result == "2" {
             continue;
         }
-        println!("{:?}", pos);
     }
 
     Ok(result)
@@ -53,6 +61,7 @@ fn parse_positions(res: ResponseMessage) -> Result<Vec<PositionReport>, Error> {
 
 fn parse_order_mass(res: ResponseMessage) -> Result<Vec<ExecutionReport>, Error> {
     let mut result = Vec::new();
+    // TODO
 
     Ok(result)
 }
@@ -153,11 +162,42 @@ impl TradeClient {
         parse_order_mass(res)
     }
 
-    pub async fn new_market_order(&self) -> Result<(), Error> {
-        unimplemented!()
+    pub async fn new_market_order(
+        &self,
+        symbol: u32,
+        side: Side,
+        order_qty: f64,
+        cl_orig_id: Option<String>,
+        pos_id: Option<String>,
+        transact_time: Option<NaiveDateTime>,
+        custom_ord_label: Option<String>,
+    ) -> Result<(), Error> {
+        let req = NewOrderSingleReq::new(
+            cl_orig_id.unwrap_or(format!("dt{:?}", Utc::now())),
+            symbol,
+            side,
+            transact_time,
+            order_qty,
+            OrderType::MARKET,
+            None,
+            None,
+            None,
+            pos_id,
+            custom_ord_label,
+        );
+        let seq_num = self.internal.send_message(req).await?;
+        let res = self.fetch_response(seq_num).await?;
+        println!("{:?}", res);
+
+        // TODO handle response
+        Ok(())
     }
 
     pub async fn new_limit_order(&self) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    pub async fn new_stop_order(&self) -> Result<(), Error> {
         unimplemented!()
     }
 

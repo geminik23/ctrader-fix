@@ -52,10 +52,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let host = env::var("CTRADER_FIX_HOST").unwrap();
     let username = env::var("CTRADER_FIX_USERNAME").unwrap();
     let password = env::var("CTRADER_FIX_PASSWORD").unwrap();
-    let broker = env::var("CTRADER_FIX_BROKER").unwrap();
+    let sender_comp_id = env::var("CTRADER_FIX_SENDERCOMPID").unwrap();
 
     let handler = Arc::new(Handler {});
-    let mut client = MarketClient::new(host, username, password, broker, None);
+    let mut client = MarketClient::new(host, username, password, sender_comp_id, None);
     client.register_connection_handler_arc(handler.clone());
     client.register_market_handler_arc(handler.clone());
 

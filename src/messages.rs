@@ -163,10 +163,7 @@ pub trait RequestMessage: Send {
     ) -> String {
         let fields = vec![
             format_field(Field::MsgType, self.get_message_type()),
-            format_field(
-                Field::SenderCompID,
-                format!("{}.{}", config.broker, config.username),
-            ),
+            format_field(Field::SenderCompID, &config.sender_comp_id),
             format_field(Field::TargetCompID, "cServer"),
             format_field(Field::TargetSubID, sub_id.to_string()),
             format_field(Field::SenderSubID, sub_id.to_string()),
@@ -409,7 +406,7 @@ impl RequestMessage for MarketDataReq {
 #[derive(Debug, Clone, Default)]
 pub struct NewOrderSingleReq {
     pub cl_ord_id: String,
-    pub symbol: String,
+    pub symbol: u32,
     pub side: Side,
     pub transact_time: Option<chrono::NaiveDateTime>,
     pub order_qty: f64,
@@ -424,7 +421,7 @@ pub struct NewOrderSingleReq {
 impl NewOrderSingleReq {
     pub fn new(
         cl_ord_id: String,
-        symbol: String,
+        symbol: u32,
         side: Side,
         transact_time: Option<chrono::NaiveDateTime>,
         order_qty: f64,

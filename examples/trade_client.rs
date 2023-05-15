@@ -1,4 +1,7 @@
-use cfix::{types::ConnectionHandler, TradeClient};
+use cfix::{
+    types::{ConnectionHandler, Side},
+    TradeClient,
+};
 use std::{env, error::Error, sync::Arc};
 
 struct Handler;
@@ -25,10 +28,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let host = env::var("CTRADER_FIX_HOST").unwrap();
     let username = env::var("CTRADER_FIX_USERNAME").unwrap();
     let password = env::var("CTRADER_FIX_PASSWORD").unwrap();
-    let broker = env::var("CTRADER_FIX_BROKER").unwrap();
+    let sender_comp_id = env::var("CTRADER_FIX_SENDERCOMPID").unwrap();
 
     let handler = Arc::new(Handler {});
-    let mut client = TradeClient::new(host, username, password, broker, None);
+    let mut client = TradeClient::new(host, username, password, sender_comp_id, None);
     client.register_connection_handler_arc(handler.clone());
 
     // connect and logon
@@ -37,11 +40,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let res = client.fetch_security_list().await?;
         log::info!("Secutiry list - {:?}", res);
         //
-        // log::info!("request fetch positions");
+        log::info!("request fetch positions");
         let res = client.fetch_positions().await?;
         log::info!("Positions - {:?}", res);
 
-        async_std::task::sleep(std::time::Duration::from_secs(10)).await;
+        log::info!("New market order");
+        let res = client
+            .new_market_order(1, Side::BUY, 0.01, None, None, None, None)
+            .await?;
+        async_std::task::sleep(std::time::Duration::from_secs(5)).await;
     }
 
     // disconnect
