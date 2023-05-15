@@ -58,6 +58,8 @@ pub struct PositionReport {
 #[derive(Debug)]
 pub struct NewOrderReport {
     pub symbol: u32,
+    pub price: Option<f64>,
+    pub stop_px: Option<f64>,
     pub order_qty: f64,
     pub order_status: OrderStatus,
     pub order_type: OrderType,

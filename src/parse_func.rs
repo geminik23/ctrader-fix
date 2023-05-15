@@ -113,6 +113,12 @@ pub fn parse_new_order_report(res: ResponseMessage) -> Result<NewOrderReport, Er
             .unwrap_or("0".into())
             .parse::<u32>()
             .unwrap(),
+        price: res
+            .get_field_value(Field::Price)
+            .map(|v| v.parse::<f64>().unwrap()),
+        stop_px: res
+            .get_field_value(Field::StopPx)
+            .map(|v| v.parse::<f64>().unwrap()),
         order_qty: res
             .get_field_value(Field::OrderQty)
             .unwrap_or("0.0".into())

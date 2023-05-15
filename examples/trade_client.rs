@@ -50,11 +50,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let res = client.fetch_all_order_status(None).await?;
         log::info!("Order mass - {:?}", res);
 
-        log::info!("New market order");
-        let res = client
-            .new_market_order(1, Side::BUY, 1000.0, None, None, None, None)
-            .await?;
-        log::info!("Result of market order - {:?}", res);
+        // log::info!("New market order");
+        // let res = client
+        //     .new_market_order(1, Side::BUY, 1000.0, None, None, None, None)
+        //     .await?;
+        // log::info!("Result of market order - {:?}", res);
+
+        // log::info!("New limit order");
+        // let res = client
+        //     .new_limit_order(1, Side::BUY, 0.9, 1000.0, None, None, None, None, None)
+        //     .await?;
+        // log::info!("Result of limit order - {:?}", res);
+
+        // log::info!("New stop order");
+        // let res = client
+        //     .new_stop_order(1, Side::SELL, 1.1, 1000.0, None, None, None, None, None)
+        //     .await?;
+        // log::info!("Result of stop order - {:?}", res);
 
         async_std::task::sleep(std::time::Duration::from_secs(5)).await;
     }

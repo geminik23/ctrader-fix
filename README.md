@@ -40,8 +40,8 @@ This is a Rust implementation of the FIX API for the cTrader trading platform. I
   - [x] Implement fetch_positions
   - [x] Implement fetch_all_order_status
   - [x] Implement new_market_order
-  - [ ] Implement new_limit_order
-  - [ ] Implement new_stop_order
+  - [x] Implement new_limit_order
+  - [x] Implement new_stop_order
   - [ ] Implement replace_order
   - [ ] Implement close_position and close_all_position
   - [ ] Implement cancel_order and cancel_all_position

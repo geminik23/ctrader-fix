@@ -22,7 +22,7 @@ impl TradeClient {
         host: String,
         login: String,
         password: String,
-        broker: String,
+        sender_comp_id: String,
         heartbeat_interval: Option<u32>,
     ) -> Self {
         Self {
@@ -31,7 +31,7 @@ impl TradeClient {
                 host,
                 login,
                 password,
-                broker,
+                sender_comp_id,
                 heartbeat_interval,
             ),
         }
@@ -190,42 +190,17 @@ impl TradeClient {
         // parse_order_mass(res)
     }
 
-    async fn new_order(&self, req: NewOrderSingleReq) -> Result<Vec<ResponseMessage>, Error> {
+    async fn new_order(&self, req: NewOrderSingleReq) -> Result<NewOrderReport, Error> {
         let cl_ord_id = req.cl_ord_id.clone();
 
         self.internal.send_message(req).await?;
-        self.fetch_response(vec![
-            ("8", Field::ClOrdId, cl_ord_id.clone()),
-            ("j", Field::BusinessRejectRefID, cl_ord_id.clone()),
-        ])
-        .await
-    }
-
-    pub async fn new_market_order(
-        &self,
-        symbol: u32,
-        side: Side,
-        order_qty: f64,
-        cl_ord_id: Option<String>,
-        pos_id: Option<String>,
-        transact_time: Option<NaiveDateTime>,
-        custom_ord_label: Option<String>,
-    ) -> Result<NewOrderReport, Error> {
-        let req = NewOrderSingleReq::new(
-            cl_ord_id.unwrap_or(self.create_unique_id()),
-            symbol,
-            side,
-            transact_time,
-            order_qty,
-            OrderType::MARKET,
-            None,
-            None,
-            None,
-            pos_id,
-            custom_ord_label,
-        );
-
-        match self.new_order(req).await {
+        match self
+            .fetch_response(vec![
+                ("8", Field::ClOrdId, cl_ord_id.clone()),
+                ("j", Field::BusinessRejectRefID, cl_ord_id.clone()),
+            ])
+            .await
+        {
             Ok(res) => {
                 if let Some(rej) = res
                     .iter()
@@ -252,12 +227,88 @@ impl TradeClient {
         }
     }
 
-    pub async fn new_limit_order(&self) -> Result<(), Error> {
-        unimplemented!()
+    pub async fn new_market_order(
+        &self,
+        symbol: u32,
+        side: Side,
+        order_qty: f64,
+        cl_ord_id: Option<String>,
+        pos_id: Option<String>,
+        transact_time: Option<NaiveDateTime>,
+        custom_ord_label: Option<String>,
+    ) -> Result<NewOrderReport, Error> {
+        let req = NewOrderSingleReq::new(
+            cl_ord_id.unwrap_or(self.create_unique_id()),
+            symbol,
+            side,
+            transact_time,
+            order_qty,
+            OrderType::MARKET,
+            None,
+            None,
+            None,
+            pos_id,
+            custom_ord_label,
+        );
+        self.new_order(req).await
     }
 
-    pub async fn new_stop_order(&self) -> Result<(), Error> {
-        unimplemented!()
+    pub async fn new_limit_order(
+        &self,
+        symbol: u32,
+        side: Side,
+        price: f64,
+        order_qty: f64,
+        cl_ord_id: Option<String>,
+        pos_id: Option<String>,
+        expire_time: Option<NaiveDateTime>,
+        transact_time: Option<NaiveDateTime>,
+        custom_ord_label: Option<String>,
+    ) -> Result<NewOrderReport, Error> {
+        let req = NewOrderSingleReq::new(
+            cl_ord_id.unwrap_or(self.create_unique_id()),
+            symbol,
+            side,
+            transact_time,
+            order_qty,
+            OrderType::LIMIT,
+            Some(price),
+            None,
+            expire_time,
+            pos_id,
+            custom_ord_label,
+        );
+
+        self.new_order(req).await
+    }
+
+    pub async fn new_stop_order(
+        &self,
+        symbol: u32,
+        side: Side,
+        stop_px: f64,
+        order_qty: f64,
+        cl_ord_id: Option<String>,
+        pos_id: Option<String>,
+        expire_time: Option<NaiveDateTime>,
+        transact_time: Option<NaiveDateTime>,
+        custom_ord_label: Option<String>,
+    ) -> Result<NewOrderReport, Error> {
+        let req = NewOrderSingleReq::new(
+            cl_ord_id.unwrap_or(self.create_unique_id()),
+            symbol,
+            side,
+            transact_time,
+            order_qty,
+            OrderType::STOP,
+            None,
+            Some(stop_px),
+            expire_time,
+            pos_id,
+            custom_ord_label,
+        );
+
+        self.new_order(req).await
     }
 
     pub async fn replace_order(&self) -> Result<(), Error> {

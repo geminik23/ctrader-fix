@@ -87,7 +87,7 @@ impl MarketClient {
         host: String,
         login: String,
         password: String,
-        broker: String,
+        sender_comp_id: String,
         heartbeat_interval: Option<u32>,
     ) -> Self {
         Self {
@@ -96,7 +96,7 @@ impl MarketClient {
                 host,
                 login,
                 password,
-                broker,
+                sender_comp_id,
                 heartbeat_interval,
             ),
 
