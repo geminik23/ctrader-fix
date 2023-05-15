@@ -41,7 +41,18 @@ pub struct SymbolInformation {
 }
 
 #[derive(Debug)]
-pub struct PositionReport {}
+pub struct PositionReport {
+    pub symbol_id: u32,
+    pub position_id: String,
+    pub long_qty: f64,
+    pub short_qty: f64,
+    pub settle_price: f64,
+    pub absolute_tp: Option<f64>,
+    pub absolute_sl: Option<f64>,
+    pub trailing_sl: Option<bool>,
+    pub trigger_method_sl: Option<u32>,
+    pub guaranteed_sl: Option<bool>,
+}
 
 #[derive(Debug)]
 pub struct ExecutionReport {}
@@ -119,6 +130,9 @@ pub enum Error {
     #[error("Field not found : {0}")]
     FieldNotFoundError(Field),
 
+    #[error("Request failed")]
+    RequestFailed,
+
     // subscription errors for market client
     #[error("Failed to {2} subscription {0}: {1}")]
     SubscriptionError(u32, String, MarketType),
@@ -132,8 +146,10 @@ pub enum Error {
     // internal errors
     #[error("Request rejected")]
     RequestRejected(ResponseMessage),
-    #[error("Failed to find the response of seq num({0})")]
-    NoResponse(u32),
+    #[error("Failed to find the response of msgType({0})")]
+    NoResponse(String),
+    #[error("Unknown errro")]
+    UnknownError,
 
     // reponse send error
     #[error(transparent)]

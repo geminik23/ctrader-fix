@@ -35,7 +35,7 @@ pub struct FixApi {
     pub trigger: Sender<String>,
     listener: Receiver<String>,
 
-    pub container: Arc<RwLock<HashMap<u32, ResponseMessage>>>,
+    pub container: Arc<RwLock<HashMap<String, Vec<ResponseMessage>>>>,
 
     //callback
     connection_handler: Option<Arc<dyn ConnectionHandler + Send + Sync>>,
@@ -141,7 +141,7 @@ impl FixApi {
         Ok(())
     }
 
-    pub async fn send_message<R: RequestMessage>(&self, req: R) -> Result<u32, Error> {
+    pub async fn send_message<R: RequestMessage>(&self, req: R) -> Result<(), Error> {
         let no_seq = self.seq.fetch_add(1, Ordering::Relaxed);
         let req = req.build(self.sub_id, no_seq, DELIMITER, &self.config);
         if let Some(stream) = self.stream.clone() {
@@ -150,8 +150,7 @@ impl FixApi {
             writer.write_all(req.as_bytes()).await?;
             writer.flush().await?;
         }
-
-        Ok(no_seq)
+        Ok(())
     }
 
     pub fn is_connected(&self) -> bool {
@@ -165,20 +164,30 @@ impl FixApi {
         self.listener.recv().await.map_err(|e| e.into())
     }
 
-    pub async fn check_req_accepted(&self, seq_num: u32) -> Result<ResponseMessage, Error> {
+    pub async fn check_responses(
+        &self,
+        msg_type: &str,
+        field: Field,
+        value: String,
+    ) -> Result<Vec<ResponseMessage>, Error> {
         let mut cont = self.container.write().await;
-        //check the seq no
-        if let Some(res) = cont.remove(&seq_num) {
-            // rejected
-            let msg_type = res.get_message_type();
-            if msg_type == "3" || msg_type == "j" {
-                log::debug!("Got rejected");
-                return Err(Error::RequestRejected(res));
+        if let Some(responses) = cont.get_mut(msg_type) {
+            let mut result = Vec::new();
+            let idx: Vec<usize> = responses
+                .iter()
+                .enumerate()
+                .filter(|(_, v)| v.get_field_value(field).filter(|v| v == &value).is_some())
+                .map(|(i, _)| i)
+                .collect();
+            for i in idx.into_iter().rev() {
+                result.push(responses.remove(i));
             }
-            Ok(res)
-        } else {
-            Err(Error::NoResponse(seq_num))
+
+            if !result.is_empty() {
+                return Ok(result);
+            }
         }
+        Err(Error::NoResponse(msg_type.into()))
     }
     //
     // request
@@ -335,12 +344,9 @@ impl FixApi {
                                             // store the response in container.
                                             {
                                                 let mut cont = cont.write().await;
-                                                cont.insert(
-                                                    seq_num.parse().expect(
-                                                        "Failed to parse the MsgSeqNum into u32",
-                                                    ),
-                                                    res,
-                                                );
+                                                cont.entry(mtype.clone())
+                                                    .or_insert(Vec::new())
+                                                    .push(res);
                                             }
                                             tx.send(mtype).await.unwrap_or_else(|e| {
                                                 // fatal
