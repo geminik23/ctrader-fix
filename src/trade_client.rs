@@ -114,7 +114,7 @@ impl TradeClient {
     }
 
     async fn fetch_response(&self, seq_num: u32) -> Result<ResponseMessage, Error> {
-        while let Ok(()) = self.internal.wait_notifier().await {
+        while let Ok(msg_type) = self.internal.wait_notifier().await {
             match self.internal.check_req_accepted(seq_num).await {
                 Ok(res) => {
                     log::debug!("in res {:?}", seq_num);
@@ -122,7 +122,7 @@ impl TradeClient {
                 }
                 Err(Error::NoResponse(_)) => {
                     log::debug!(" no reponse{:?}", seq_num);
-                    if let Err(err) = self.internal.trigger.send(()).await {
+                    if let Err(err) = self.internal.trigger.send(msg_type).await {
                         return Err(Error::TriggerError(err));
                     }
                 }

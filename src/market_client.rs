@@ -156,6 +156,7 @@ impl MarketClient {
 
                 let market_data_handler = market_data_handler.clone();
 
+                let mtype = String::from(msg_type);
                 //
                 task::spawn(async move {
                     match msg_type {
@@ -171,7 +172,7 @@ impl MarketClient {
                                         .await
                                         .insert(symbol_id, RequestState::Accepted);
 
-                                    tx.send(()).await.unwrap_or_else(|e| {
+                                    tx.send(mtype).await.unwrap_or_else(|e| {
                                         // fatal
                                         log::error!(
                                             "Failed to notify that the response is received - {:?}",
@@ -204,7 +205,7 @@ impl MarketClient {
                                         .await
                                         .insert(symbol_id, RequestState::Accepted);
 
-                                    tx.send(()).await.unwrap_or_else(|e| {
+                                    tx.send(mtype).await.unwrap_or_else(|e| {
                                         // fatal
                                         log::error!(
                                             "Failed to notify that the response is received - {:?}",
@@ -415,7 +416,7 @@ impl MarketClient {
         let seq_num = self.internal.send_message(req).await?;
 
         // waiting (reject or  marketdata)
-        while let Ok(()) = self.internal.wait_notifier().await {
+        while let Ok(mtype) = self.internal.wait_notifier().await {
             // check the market data
             if let Some(RequestState::Accepted) = self.spot_req_states.lock().await.get(&symbol_id)
             {
@@ -444,7 +445,7 @@ impl MarketClient {
                     // FIXME is it necessary?
                     // no response
                     // retrigger
-                    if let Err(err) = self.internal.trigger.send(()).await {
+                    if let Err(err) = self.internal.trigger.send(mtype).await {
                         return Err(Error::TriggerError(err));
                     }
                 }
@@ -508,7 +509,7 @@ impl MarketClient {
         let seq_num = self.internal.send_message(req).await?;
 
         // waiting (reject or  marketdata)
-        while let Ok(()) = self.internal.wait_notifier().await {
+        while let Ok(mtype) = self.internal.wait_notifier().await {
             // check the market data
             if let Some(RequestState::Accepted) = self.depth_req_states.lock().await.get(&symbol_id)
             {
@@ -531,7 +532,7 @@ impl MarketClient {
                 _ => {
                     // no response
                     // retrigger
-                    if let Err(err) = self.internal.trigger.send(()).await {
+                    if let Err(err) = self.internal.trigger.send(mtype).await {
                         return Err(Error::TriggerError(err));
                     }
                 }

@@ -32,8 +32,8 @@ pub struct FixApi {
     is_connected: Arc<AtomicBool>,
 
     res_receiver: Option<Receiver<ResponseMessage>>,
-    pub trigger: Sender<()>,
-    listener: Receiver<()>,
+    pub trigger: Sender<String>,
+    listener: Receiver<String>,
 
     pub container: Arc<RwLock<HashMap<u32, ResponseMessage>>>,
 
@@ -160,7 +160,7 @@ impl FixApi {
         self.is_connected.load(Ordering::Relaxed)
     }
 
-    pub async fn wait_notifier(&self) -> Result<(), Error> {
+    pub async fn wait_notifier(&self) -> Result<String, Error> {
         if !self.is_connected() {
             return Err(Error::NotConnected);
         }
@@ -199,139 +199,158 @@ impl FixApi {
         if let Some(recv) = &self.res_receiver {
             while let Ok(response) = recv.recv().await {
                 // logon response
-                if response.get_message_type() == "A" {
-                    //
-                    if let Some(handler) = self.connection_handler.clone() {
-                        task::spawn(async move {
-                            handler.on_logon().await;
-                        });
-                    }
-
-                    let stream = self.stream.clone().unwrap();
-                    let sub_id = self.sub_id;
-                    let config = self.config.clone();
-                    let seq = self.seq.clone();
-
-                    let send_request = move |req: Box<dyn RequestMessage>| {
-                        let stream = stream.clone();
-                        let sub_id = sub_id;
-                        let config = config.clone();
-                        let seq = seq.clone();
-                        async move {
-                            let req = req.build(
-                                sub_id,
-                                seq.fetch_add(1, Ordering::Relaxed),
-                                DELIMITER,
-                                &config,
-                            );
-
-                            let mut writer = BufWriter::new(stream.as_ref());
-                            let _ = writer.write_all(req.as_bytes()).await;
-                            writer.flush().await.unwrap_or_else(|e| {
-                                log::error!("Failed to send the heartbeat request - {:?}", e);
+                let msg_type = response.get_message_type();
+                match msg_type {
+                    "A" => {
+                        //
+                        if let Some(handler) = self.connection_handler.clone() {
+                            task::spawn(async move {
+                                handler.on_logon().await;
                             });
                         }
-                    };
-                    let send_request_clone = send_request.clone();
 
-                    let hb_interval = self.config.heart_beat as u64;
+                        let stream = self.stream.clone().unwrap();
+                        let sub_id = self.sub_id;
+                        let config = self.config.clone();
+                        let seq = self.seq.clone();
 
-                    //
-                    // send heartbeat per hb_interval
-                    task::spawn(async move {
-                        let mut heartbeat_stream =
-                            stream::interval(Duration::from_secs(hb_interval));
+                        let send_request = move |req: Box<dyn RequestMessage>| {
+                            let stream = stream.clone();
+                            let sub_id = sub_id;
+                            let config = config.clone();
+                            let seq = seq.clone();
+                            async move {
+                                let req = req.build(
+                                    sub_id,
+                                    seq.fetch_add(1, Ordering::Relaxed),
+                                    DELIMITER,
+                                    &config,
+                                );
 
-                        while let Some(_) = heartbeat_stream.next().await {
-                            let req = HeartbeatReq::default();
-                            send_request(Box::new(req)).await;
-                            log::debug!("Sent the heartbeat");
-                        }
-                    });
+                                let mut writer = BufWriter::new(stream.as_ref());
+                                let _ = writer.write_all(req.as_bytes()).await;
+                                writer.flush().await.unwrap_or_else(|e| {
+                                    log::error!("Failed to send the heartbeat request - {:?}", e);
+                                });
+                            }
+                        };
+                        let send_request_clone = send_request.clone();
 
-                    //
-                    // handle the responses
+                        let hb_interval = self.config.heart_beat as u64;
 
-                    // notifier
-                    let tx = self.trigger.clone();
-                    let recv = self.res_receiver.clone().unwrap();
-                    let cont = self.container.clone();
-                    let market_callback = self.market_callback.clone();
+                        //
+                        // send heartbeat per hb_interval
+                        task::spawn(async move {
+                            let mut heartbeat_stream =
+                                stream::interval(Duration::from_secs(hb_interval));
 
-                    task::spawn(async move {
-                        while let Ok(res) = recv.recv().await {
-                            let msg_type = res.get_message_type();
-                            // notify? or send? via channel?
-                            match msg_type {
-                                "1" => {
-                                    // send back with test request id
-                                    if let Some(test_req_id) = res.get_field_value(Field::TestReqID)
-                                    {
-                                        send_request_clone(Box::new(TestReq::new(test_req_id)))
-                                            .await;
-                                        log::debug!("Sent the heartbeat from test_req_id");
-                                    }
-                                }
-                                "W" | "X" => {
-                                    // market data
-                                    let symbol_id = res
-                                        .get_field_value(Field::Symbol)
-                                        .expect("Failed to find the Symbol tag")
-                                        .parse::<u32>()
-                                        .unwrap();
-                                    // notify to callback
-                                    if let Some(market_callback) = market_callback.clone() {
-                                        let data = res.get_repeating_groups(
-                                            Field::NoMDEntries,
-                                            if msg_type == "W" {
-                                                Field::MDEntryType
-                                            } else {
-                                                Field::MDUpdateAction
-                                            },
-                                            None,
+                            while let Some(_) = heartbeat_stream.next().await {
+                                let req = HeartbeatReq::default();
+                                send_request(Box::new(req)).await;
+                                log::debug!("Sent the heartbeat");
+                            }
+                        });
+
+                        //
+                        // handle the responses
+
+                        // notifier
+                        let tx = self.trigger.clone();
+                        let recv = self.res_receiver.clone().unwrap();
+                        let cont = self.container.clone();
+                        let market_callback = self.market_callback.clone();
+
+                        task::spawn(async move {
+                            while let Ok(res) = recv.recv().await {
+                                let msg_type = res.get_message_type();
+                                let mtype = String::from(msg_type);
+                                // notify? or send? via channel?
+                                match msg_type {
+                                    "5" => {
+                                        // 5 : logout
+                                        tx.send(mtype).await.unwrap_or_else(|e| {
+                                            // fatal
+                                            log::error!(
+                                            "Failed to notify that the response is received - {:?}",
+                                            e
                                         );
-
-                                        market_callback(
-                                            msg_type.chars().next().unwrap(),
-                                            symbol_id,
-                                            data,
-                                        );
+                                        });
                                     }
-                                }
-                                _ => {
-                                    log::debug!("{}", res.get_message());
-
-                                    if let Some(seq_num) = res.get_field_value(Field::MsgSeqNum) {
-                                        // store the response in container.
+                                    "1" => {
+                                        // send back with test request id
+                                        if let Some(test_req_id) =
+                                            res.get_field_value(Field::TestReqID)
                                         {
-                                            let mut cont = cont.write().await;
-                                            cont.insert(
-                                                seq_num.parse().expect(
-                                                    "Failed to parse the MsgSeqNum into u32",
-                                                ),
-                                                res,
+                                            send_request_clone(Box::new(TestReq::new(test_req_id)))
+                                                .await;
+                                            log::debug!("Sent the heartbeat from test_req_id");
+                                        }
+                                    }
+                                    "W" | "X" => {
+                                        // market data
+                                        let symbol_id = res
+                                            .get_field_value(Field::Symbol)
+                                            .expect("Failed to find the Symbol tag")
+                                            .parse::<u32>()
+                                            .unwrap();
+                                        // notify to callback
+                                        if let Some(market_callback) = market_callback.clone() {
+                                            let data = res.get_repeating_groups(
+                                                Field::NoMDEntries,
+                                                if msg_type == "W" {
+                                                    Field::MDEntryType
+                                                } else {
+                                                    Field::MDUpdateAction
+                                                },
+                                                None,
+                                            );
+
+                                            market_callback(
+                                                msg_type.chars().next().unwrap(),
+                                                symbol_id,
+                                                data,
                                             );
                                         }
-                                        tx.send(()).await.unwrap_or_else(|e| {
+                                    }
+                                    _ => {
+                                        log::debug!("{}", res.get_message());
+
+                                        if let Some(seq_num) = res.get_field_value(Field::MsgSeqNum)
+                                        {
+                                            // store the response in container.
+                                            {
+                                                let mut cont = cont.write().await;
+                                                cont.insert(
+                                                    seq_num.parse().expect(
+                                                        "Failed to parse the MsgSeqNum into u32",
+                                                    ),
+                                                    res,
+                                                );
+                                            }
+                                            tx.send(mtype).await.unwrap_or_else(|e| {
                                                 // fatal
                                                 log::error!(
                                                 "Failed to notify that the response is received - {:?}",
                                                 e
                                             );
                                         });
-                                    } else {
-                                        log::debug!("No seq number : {}", res.get_message());
+                                        } else {
+                                            log::debug!("No seq number : {}", res.get_message());
+                                        }
                                     }
                                 }
                             }
-                        }
-                    });
+                        });
 
-                    break;
+                        break;
+                    }
+                    "5" => {
+                        return Err(Error::LoggedOut);
+                    }
+                    _ => {}
                 }
             }
         }
-
         Ok(())
     }
 

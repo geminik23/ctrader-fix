@@ -89,8 +89,8 @@ pub enum Error {
     // connection errors
     #[error("No connection")]
     NotConnected,
-    #[error("Not logged on")]
-    NotLoggedOn,
+    #[error("logged out")]
+    LoggedOut,
 
     #[error("Field not found : {0}")]
     FieldNotFoundError(Field),
@@ -115,7 +115,7 @@ pub enum Error {
     #[error(transparent)]
     SendError(#[from] async_std::channel::SendError<ResponseMessage>),
     #[error(transparent)]
-    TriggerError(#[from] async_std::channel::SendError<()>),
+    TriggerError(#[from] async_std::channel::SendError<String>),
     #[error(transparent)]
     RecvError(#[from] async_std::channel::RecvError),
     #[error(transparent)]
