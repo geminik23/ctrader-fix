@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use serde::Deserialize;
 use std::{collections::HashMap, future::Future, pin::Pin, str::FromStr, sync::Arc};
 
@@ -55,7 +56,85 @@ pub struct PositionReport {
 }
 
 #[derive(Debug)]
-pub struct ExecutionReport {}
+pub struct NewOrderReport {
+    pub symbol: u32,
+    pub order_qty: f64,
+    pub order_status: OrderStatus,
+    pub order_type: OrderType,
+    pub side: Side,
+    pub time_in_force: String,
+    pub transact_time: NaiveDateTime,
+    pub leaves_qty: f64,
+    pub pos_main_rept_id: String,
+}
+
+#[derive(Debug)]
+pub struct OrderStatusReport {
+    pub symbol: u32,
+    pub order_id: String,
+    pub cum_qty: f64,
+    pub order_qty: f64,
+    pub leaves_qty: f64,
+    pub order_status: OrderStatus,
+    pub order_type: OrderType,
+    pub price: f64,
+    pub side: Side,
+    pub time_in_force: String,
+    pub transact_time: NaiveDateTime,
+    pub pos_main_rept_id: String,
+}
+
+#[derive(Debug)]
+pub enum OrderStatus {
+    New,
+    ParitallyFilled,
+    Filled,
+    Rejected,
+    Cancelled,
+    Expired,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ParseError(String);
+
+impl FromStr for OrderStatus {
+    type Err = ParseError;
+    fn from_str(s: &str) -> Result<OrderStatus, Self::Err> {
+        match s {
+            "0" => Ok(Self::New),
+            "1" => Ok(Self::ParitallyFilled),
+            "2" => Ok(Self::Filled),
+            "8" => Ok(Self::Rejected),
+            "4" => Ok(Self::Cancelled),
+            "C" => Ok(Self::Expired),
+            _ => Err(ParseError(s.into())),
+        }
+    }
+}
+
+// #[derive(Debug)]
+// pub enum ExeuctionReport {
+//     /// ExecType = 'I'
+//     OrderStatus {},
+//
+//     // not implemented
+//     New(ResponseMessage),
+//     Canceled(ResponseMessage),
+//     Replace(ResponseMessage),
+//     Rejected(ResponseMessage),
+//     Expired(ResponseMessage),
+//     Trade(ResponseMessage),
+// }
+//
+// #[derive(Debug)]
+// pub struct ExecutionReport {
+//     order_id: String,
+//     cl_ord_id: Option<String>,
+//     exec_type: char,    //
+//     order_status: char, //
+//     symbol: u32,
+//     side: Side,
+// }
 
 // == Market type definition
 
@@ -132,6 +211,8 @@ pub enum Error {
 
     #[error("Request failed")]
     RequestFailed,
+    #[error("Order Rejected : {0}")]
+    OrderRejected(String),
 
     // subscription errors for market client
     #[error("Failed to {2} subscription {0}: {1}")]
@@ -144,10 +225,10 @@ pub enum Error {
     NotSubscribed(u32, MarketType),
 
     // internal errors
-    #[error("Request rejected")]
-    RequestRejected(ResponseMessage),
-    #[error("Failed to find the response of msgType({0})")]
-    NoResponse(String),
+    #[error("Request rejected - {0}")]
+    RequestRejected(String),
+    #[error("Failed to find the response")]
+    NoResponse,
     #[error("Unknown errro")]
     UnknownError,
 
@@ -350,6 +431,20 @@ pub enum OrderType {
     MARKET = 1,
     LIMIT = 2,
     STOP = 3,
+    STOP_LIMIT = 4,
+}
+
+impl FromStr for OrderType {
+    type Err = ParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "1" => Ok(Self::MARKET),
+            "2" => Ok(Self::LIMIT),
+            "3" => Ok(Self::STOP),
+            "4" => Ok(Self::STOP_LIMIT),
+            _ => Err(ParseError(s.into())),
+        }
+    }
 }
 
 impl Default for OrderType {

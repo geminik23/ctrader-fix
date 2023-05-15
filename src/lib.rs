@@ -1,6 +1,7 @@
 mod fixapi;
 mod market_client;
 mod messages;
+mod parse_func;
 mod socket;
 mod trade_client;
 pub mod types;

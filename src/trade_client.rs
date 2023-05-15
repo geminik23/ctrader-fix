@@ -6,118 +6,17 @@ use crate::{
     messages::{
         NewOrderSingleReq, OrderMassStatusReq, PositionsReq, ResponseMessage, SecurityListReq,
     },
+    parse_func,
     types::{
-        ConnectionHandler, Error, ExecutionReport, Field, OrderType, PositionReport, Side,
-        SymbolInformation, DELIMITER,
+        ConnectionHandler, Error, Field, NewOrderReport, OrderStatusReport, OrderType,
+        PositionReport, Side, SymbolInformation, DELIMITER,
     },
 };
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 pub struct TradeClient {
     internal: FixApi,
 }
-
-fn parse_security_list(res: &ResponseMessage) -> Result<Vec<SymbolInformation>, Error> {
-    let sec_list = res.get_repeating_groups(Field::NoRelatedSym, Field::Symbol, None);
-    let mut result = Vec::new();
-    for symbol in sec_list.into_iter() {
-        if symbol.len() < 3 {
-            continue;
-        }
-        result.push(SymbolInformation {
-            name: symbol
-                .get(&Field::SymbolName)
-                .ok_or(Error::FieldNotFoundError(Field::SymbolName))?
-                .clone(),
-            id: symbol
-                .get(&Field::Symbol)
-                .ok_or(Error::FieldNotFoundError(Field::Symbol))?
-                .parse::<u32>()
-                .unwrap(),
-            digits: symbol
-                .get(&Field::SymbolDigits)
-                .ok_or(Error::FieldNotFoundError(Field::SymbolDigits))?
-                .parse::<u32>()
-                .unwrap(),
-        });
-    }
-    Ok(result)
-}
-
-fn parse_positions(res: &ResponseMessage) -> Result<Vec<PositionReport>, Error> {
-    let npos = res
-        .get_field_value(Field::TotalNumPosReports)
-        .unwrap_or("0".into())
-        .parse::<u32>()
-        .unwrap_or(0);
-
-    let mut raw_res: Vec<ResponseMessage> = Vec::new();
-    if npos > 1 {
-        let parts: Vec<_> = res.get_message().split("|80=").collect();
-        let first = parts[0];
-        raw_res.push(ResponseMessage::new(&format!("{}|", first), DELIMITER));
-        let parts: Vec<_> = parts
-            .iter()
-            .skip(1)
-            .map(|part| ResponseMessage::new(&format!("80={}|", part), DELIMITER))
-            .collect();
-        raw_res.extend(parts);
-    } else {
-        raw_res.push(ResponseMessage::new(res.get_message(), DELIMITER));
-    }
-
-    Ok(raw_res
-        .into_iter()
-        .filter(|res| res.get_field_value(Field::PosReqResult).unwrap() == "0")
-        .filter(|res| {
-            res.get_field_value(Field::NoPositions)
-                .map(|v| v == "1")
-                .unwrap_or(false)
-        })
-        .map(|res| PositionReport {
-            symbol_id: res
-                .get_field_value(Field::Symbol)
-                .unwrap()
-                .parse::<u32>()
-                .unwrap(),
-            position_id: res.get_field_value(Field::PosMaintRptID).unwrap(),
-            long_qty: res
-                .get_field_value(Field::LongQty)
-                .unwrap()
-                .parse::<f64>()
-                .unwrap(),
-            short_qty: res
-                .get_field_value(Field::ShortQty)
-                .unwrap()
-                .parse::<f64>()
-                .unwrap(),
-            settle_price: res
-                .get_field_value(Field::SettlPrice)
-                .unwrap()
-                .parse::<f64>()
-                .unwrap(),
-            absolute_tp: res
-                .get_field_value(Field::AbsoluteTP)
-                .map(|v| v.parse::<f64>().unwrap()),
-            absolute_sl: res
-                .get_field_value(Field::AbsoluteSL)
-                .map(|v| v.parse::<f64>().unwrap()),
-            trailing_sl: res.get_field_value(Field::TrailingSL).map(|v| v == "Y"),
-            trigger_method_sl: res
-                .get_field_value(Field::TriggerMethodSL)
-                .map(|v| v.parse::<u32>().unwrap()),
-            guaranteed_sl: res.get_field_value(Field::GuaranteedSL).map(|v| v == "Y"),
-        })
-        .collect())
-}
-
-fn parse_order_mass(res: ResponseMessage) -> Result<Vec<ExecutionReport>, Error> {
-    let mut result = Vec::new();
-    // TODO
-
-    Ok(result)
-}
-
 impl TradeClient {
     pub fn new(
         host: String,
@@ -167,22 +66,18 @@ impl TradeClient {
 
     async fn fetch_response(
         &self,
-        types: Vec<&str>,
-        field: Field,
-        value: String,
+        arg: Vec<(&str, Field, String)>,
     ) -> Result<Vec<ResponseMessage>, Error> {
+        let arg = arg.into_iter().map(|v| (v.0, v)).collect::<HashMap<_, _>>();
         while let Ok(msg_type) = self.internal.wait_notifier().await {
-            if types.contains(&msg_type.as_str()) {
-                match self
-                    .internal
-                    .check_responses(&msg_type, field, value.clone())
-                    .await
-                {
+            let has_key = arg.contains_key(&msg_type.as_str());
+            if has_key {
+                match self.internal.check_responses(arg.clone()).await {
                     Ok(res) => {
                         log::debug!("in fetch response - {:?}", res);
                         return Ok(res);
                     }
-                    Err(Error::NoResponse(msg_type)) => {
+                    Err(Error::NoResponse) => {
                         // log::debug!("no reponse {:?}", msg_type);
                         if let Err(err) = self.internal.trigger.send(msg_type).await {
                             return Err(Error::TriggerError(err));
@@ -202,6 +97,10 @@ impl TradeClient {
         Err(Error::UnknownError)
     }
 
+    fn create_unique_id(&self) -> String {
+        Uuid::new_v4().to_string()
+    }
+
     /// Fetch the security list from the server.
     ///
     ///
@@ -209,75 +108,149 @@ impl TradeClient {
     /// response. It returns a result containing the data if the request succesful, or an error if
     /// it fails.
     pub async fn fetch_security_list(&self) -> Result<Vec<SymbolInformation>, Error> {
-        let security_req_id = Uuid::new_v4().to_string();
+        let security_req_id = self.create_unique_id();
         let req = SecurityListReq::new(security_req_id.clone(), 0, None);
         self.internal.send_message(req).await?;
         match self
-            .fetch_response(vec!["y"], Field::SecurityReqID, security_req_id)
+            .fetch_response(vec![("y", Field::SecurityReqID, security_req_id)])
             .await
         {
             Ok(res) => {
                 let res = res.first().unwrap();
-                parse_security_list(res)
+                parse_func::parse_security_list(res)
             }
             Err(err) => Err(err),
         }
     }
 
     pub async fn fetch_positions(&self) -> Result<Vec<PositionReport>, Error> {
-        let pos_req_id = Uuid::new_v4().to_string();
+        let pos_req_id = self.create_unique_id();
         let req = PositionsReq::new(pos_req_id.clone(), None);
         self.internal.send_message(req).await?;
 
         match self
-            .fetch_response(vec!["AP"], Field::PosReqID, pos_req_id)
+            .fetch_response(vec![("AP", Field::PosReqID, pos_req_id)])
             .await
         {
             Ok(res) => {
                 let res = res.first().unwrap();
-                parse_positions(res)
+                parse_func::parse_positions(res)
             }
             Err(err) => Err(err),
         }
     }
-    //
-    // pub async fn fetch_all_orders(&self) -> Result<Vec<ExecutionReport>, Error> {
-    //     let req = OrderMassStatusReq::new(uuid::Uuid::new_v4().to_string(), 7, None);
-    //     let seq_num = self.internal.send_message(req).await?;
-    //     let res = self.fetch_response(seq_num).await?;
-    //     parse_order_mass(res)
-    // }
 
-    // pub async fn new_market_order(
-    //     &self,
-    //     symbol: u32,
-    //     side: Side,
-    //     order_qty: f64,
-    //     cl_orig_id: Option<String>,
-    //     pos_id: Option<String>,
-    //     transact_time: Option<NaiveDateTime>,
-    //     custom_ord_label: Option<String>,
-    // ) -> Result<(), Error> {
-    //     let req = NewOrderSingleReq::new(
-    //         cl_orig_id.unwrap_or(format!("dt{:?}", Utc::now())),
-    //         symbol,
-    //         side,
-    //         transact_time,
-    //         order_qty,
-    //         OrderType::MARKET,
-    //         None,
-    //         None,
-    //         None,
-    //         pos_id,
-    //         custom_ord_label,
-    //     );
-    //     let seq_num = self.internal.send_message(req).await?;
-    //     let res = self.fetch_response(seq_num).await?;
-    //     println!("{:?}", res);
-    //
-    //     // TODO handle response
-    //     Ok(())
-    // }
+    pub async fn fetch_all_order_status(
+        &self,
+        issue_data: Option<NaiveDateTime>,
+    ) -> Result<Vec<OrderStatusReport>, Error> {
+        let mass_status_req_id = self.create_unique_id();
+        // FIXME if mass_status_req_id is not 7, then return 'j' but response does not include the mass_status_req_id
+        let req = OrderMassStatusReq::new(mass_status_req_id.clone(), 7, issue_data);
+        self.internal.send_message(req).await?;
+
+        match self
+            .fetch_response(vec![
+                ("8", Field::MassStatusReqID, mass_status_req_id.clone()),
+                ("j", Field::BusinessRejectRefID, mass_status_req_id.clone()),
+            ])
+            .await
+        {
+            Ok(res) => {
+                if let Some(_) = res
+                    .iter()
+                    .filter(|r| r.get_field_value(Field::MsgType).unwrap() == "j")
+                    .next()
+                {
+                    // not error: order not found
+                    return Ok(Vec::new());
+                    // let reason = rej
+                    //     .get_field_value(Field::Text)
+                    //     .unwrap_or("Rejected".into());
+                    // return Err(Error::RequestRejected(reason));
+                }
+
+                // FIXME unnecessary line
+                if let Some(res) = res
+                    .into_iter()
+                    .filter(|r| r.get_field_value(Field::MsgType).unwrap() == "8")
+                    .next()
+                {
+                    return parse_func::parse_order_status(res);
+                }
+
+                // let res = res.first().unwrap();
+                // parse_positions(res)
+                //
+                Err(Error::UnknownError)
+            }
+            Err(err) => Err(err),
+        }
+        // let res = self.fetch_response(seq_num).await?;
+        // parse_order_mass(res)
+    }
+
+    async fn new_order(&self, req: NewOrderSingleReq) -> Result<Vec<ResponseMessage>, Error> {
+        let cl_ord_id = req.cl_ord_id.clone();
+
+        self.internal.send_message(req).await?;
+        self.fetch_response(vec![
+            ("8", Field::ClOrdId, cl_ord_id.clone()),
+            ("j", Field::BusinessRejectRefID, cl_ord_id.clone()),
+        ])
+        .await
+    }
+
+    pub async fn new_market_order(
+        &self,
+        symbol: u32,
+        side: Side,
+        order_qty: f64,
+        cl_ord_id: Option<String>,
+        pos_id: Option<String>,
+        transact_time: Option<NaiveDateTime>,
+        custom_ord_label: Option<String>,
+    ) -> Result<NewOrderReport, Error> {
+        let req = NewOrderSingleReq::new(
+            cl_ord_id.unwrap_or(self.create_unique_id()),
+            symbol,
+            side,
+            transact_time,
+            order_qty,
+            OrderType::MARKET,
+            None,
+            None,
+            None,
+            pos_id,
+            custom_ord_label,
+        );
+
+        match self.new_order(req).await {
+            Ok(res) => {
+                if let Some(rej) = res
+                    .iter()
+                    .filter(|r| r.get_field_value(Field::MsgType).unwrap() == "j")
+                    .next()
+                {
+                    // Order Rejected
+                    return Err(Error::OrderRejected(
+                        rej.get_field_value(Field::Text).unwrap_or("Unknown".into()),
+                    ));
+                }
+
+                if let Some(res) = res
+                    .into_iter()
+                    .filter(|r| r.get_field_value(Field::MsgType).unwrap() == "8")
+                    .next()
+                {
+                    return parse_func::parse_new_order_report(res);
+                }
+                //
+                Err(Error::UnknownError)
+            }
+            Err(err) => Err(err),
+        }
+    }
 
     pub async fn new_limit_order(&self) -> Result<(), Error> {
         unimplemented!()

@@ -166,28 +166,28 @@ impl FixApi {
 
     pub async fn check_responses(
         &self,
-        msg_type: &str,
-        field: Field,
-        value: String,
+        arg: HashMap<&str, (&str, Field, String)>,
     ) -> Result<Vec<ResponseMessage>, Error> {
         let mut cont = self.container.write().await;
-        if let Some(responses) = cont.get_mut(msg_type) {
-            let mut result = Vec::new();
-            let idx: Vec<usize> = responses
-                .iter()
-                .enumerate()
-                .filter(|(_, v)| v.get_field_value(field).filter(|v| v == &value).is_some())
-                .map(|(i, _)| i)
-                .collect();
-            for i in idx.into_iter().rev() {
-                result.push(responses.remove(i));
-            }
+        for (msg_type, (mt, field, value)) in arg.into_iter() {
+            if let Some(responses) = cont.get_mut(msg_type) {
+                let mut result = Vec::new();
+                let idx: Vec<usize> = responses
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, v)| v.get_field_value(field).filter(|v| v == &value).is_some())
+                    .map(|(i, _)| i)
+                    .collect();
+                for i in idx.into_iter().rev() {
+                    result.push(responses.remove(i));
+                }
 
-            if !result.is_empty() {
-                return Ok(result);
+                if !result.is_empty() {
+                    return Ok(result);
+                }
             }
         }
-        Err(Error::NoResponse(msg_type.into()))
+        Err(Error::NoResponse)
     }
     //
     // request
@@ -339,6 +339,7 @@ impl FixApi {
                                     _ => {
                                         log::debug!("{}", res.get_message());
 
+                                        // FIXME later remove line
                                         if let Some(seq_num) = res.get_field_value(Field::MsgSeqNum)
                                         {
                                             // store the response in container.

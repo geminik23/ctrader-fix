@@ -23,7 +23,7 @@ impl ConnectionHandler for Handler {
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenv::dotenv().ok();
     // env_logger::init();
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let host = env::var("CTRADER_FIX_HOST").unwrap();
     let username = env::var("CTRADER_FIX_USERNAME").unwrap();
@@ -39,16 +39,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if client.is_connected() {
         let res = client.fetch_security_list().await?;
         log::info!("Secutiry list - {:?}", res);
-        //
-        log::info!("request fetch positions");
-        let res = client.fetch_positions().await?;
-        log::info!("Positions - {:?}", res);
 
-        // log::info!("New market order");
-        // let res = client
-        //     .new_market_order(1, Side::BUY, 0.01, None, None, None, None)
-        //     .await?;
-        // async_std::task::sleep(std::time::Duration::from_secs(5)).await;
+        // //
+        // log::info!("Request fetch positions");
+        // let res = client.fetch_positions().await?;
+        // log::info!("Positions - {:?}", res);
+
+        //
+        log::info!("Request fetch order mass");
+        let res = client.fetch_all_order_status(None).await?;
+        log::info!("Order mass - {:?}", res);
+
+        log::info!("New market order");
+        let res = client
+            .new_market_order(1, Side::BUY, 1000.0, None, None, None, None)
+            .await?;
+        log::info!("Result of market order - {:?}", res);
+
+        async_std::task::sleep(std::time::Duration::from_secs(5)).await;
     }
 
     // disconnect
