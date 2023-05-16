@@ -3,7 +3,7 @@ use chrono::NaiveDateTime;
 use crate::{
     messages::ResponseMessage,
     types::{
-        Error, ExecutionType, ExeuctionReport, Field, OrderReport, OrderStatus, OrderType,
+        Error, ExecutionReport, ExecutionType, Field, OrderReport, OrderStatus, OrderType,
         PositionReport, Side, SymbolInformation, DELIMITER,
     },
 };
@@ -105,8 +105,8 @@ pub fn parse_positions(res: &ResponseMessage) -> Result<Vec<PositionReport>, Err
 //
 // ORDER
 //
-pub fn parse_execution_report(res: ResponseMessage) -> Result<ExeuctionReport, Error> {
-    Ok(ExeuctionReport {
+pub fn parse_execution_report(res: ResponseMessage) -> Result<ExecutionReport, Error> {
+    Ok(ExecutionReport {
         exec_type: res
             .get_field_value(Field::ExecType)
             .unwrap()
@@ -199,7 +199,7 @@ pub fn parse_execution_report(res: ResponseMessage) -> Result<ExeuctionReport, E
     })
 }
 
-pub fn parse_order_mass_status(res: ResponseMessage) -> Result<Vec<ExeuctionReport>, Error> {
+pub fn parse_order_mass_status(res: ResponseMessage) -> Result<Vec<ExecutionReport>, Error> {
     let npos = res
         .get_field_value(Field::TotNumReports)
         .unwrap_or("0".into())

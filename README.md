@@ -5,6 +5,32 @@ This project is currently in **active development** and is not yet ready for pro
 This is a Rust implementation of the FIX API for the cTrader trading platform. It's built using the async-std library, providing an asynchronous and simple interface for interacting with the cTrader platform through the Financial Information eXchange (FIX) protocol.
 
 
+## Cargo Features
+
+This crate allows you to use `tokio` runtime featured in `async-std` by specifying features in your `Cargo.toml`. By default, it uses `async-std` with the `attributes` feature. 
+
+To use the crate with the default configuration, add the following line to your `Cargo.toml`:
+
+```toml
+ctrader-fix = "0.3"
+```
+
+To use a specific Tokio configuration, specify the feature like this:
+
+```toml
+ctrader-fix = { version = "0.3", features = ["tokio1"] }
+```
+
+### Available Features
+
+- **default**: Uses `async-std` with the `unstable` feature.
+- **tokio1**: Uses `async-std` with the `unstable` and `tokio1` features.
+- **tokio02**: Uses `async-std` with the `unstable` and `tokio02` features.
+- **tokio03**: Uses `async-std` with the `unstable` and `tokio03` features.
+
+Please note that you should only enable one of these features at a time.
+
+
 ## To-Do 
 
 - [x] Base FixApi Implementation
@@ -32,9 +58,10 @@ This is a Rust implementation of the FIX API for the cTrader trading platform. I
   - [x] Parsing the depth market data in callback
   - [x] Parsing the incremental market data in callback
   - [x] Market data handler in example code.
-  - [x] FIX callback method for subscription - ~~waiting constantly in subscription method when market is closed~~
-- [x] FIX identify with message type and id - ~~issue identify the response with sequence number~~
-- [ ] TradeClient
+  - [x] Fix callback method for subscription - ~~waiting constantly in subscription method when market is closed~~
+- [x] FIXED identify with message type and id - ~~issue identify the response with sequence number~~
+- [x] FIXED the issue of heartbeat.
+- [x] TradeClient 
   - [x] Add fetch methods
   - [x] Implement fetch_security_list to fetch the security list
   - [x] Implement fetch_positions
@@ -43,11 +70,13 @@ This is a Rust implementation of the FIX API for the cTrader trading platform. I
   - [x] Implement new_limit_order
   - [x] Implement new_stop_order
   - [x] Implement parse_func for ExecutionReport
-  - [ ] Implement replace_order
-  - [ ] Implement close_position and close_all_position
-  - [ ] Implement cancel_order and cancel_all_position
-  - [ ] Handle extra execution report after filled
-
+  - [x] Implement cancel_order
+  - [x] Implement replace_order
+  - [x] Implement adjust_position_size
+  - [x] Implement close_position
+  - [x] Added timeout in request methods.
+  - [x] FIXED issue unhandled trade message (deadlock)
+  - [x] Add handler for trade execution.
 	
 
 

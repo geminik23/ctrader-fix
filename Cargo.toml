@@ -1,6 +1,6 @@
 [package]
 name = "ctrader-fix"
-version = "0.3.8"
+version = "0.3.10"
 authors = ["Jaemin Kim <geminik23@gmail.com>"]
 edition = "2021"
 description = "A rust implementation of the cTrader FIX API."
@@ -13,7 +13,7 @@ keywords = ["ctrade", "fix", "api", "finance", "trading"]
 
 
 [dependencies]
-async-std = {version="1.12", features = ["attributes", "unstable", "tokio1"]}
+async-std = {version="1.12", features = ["unstable"], opitonal = true}
 async-macros = "2.0"
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
@@ -25,12 +25,22 @@ thiserror = "1.0"
 uuid = {version = "1.3", features = ["v4", "fast-rng"]}
 
 
+[features]
+default = ["async_std_default"]
+tokio1 = ["async_std_tokio1"]
+tokio02 = ["async_std_tokio2"]
+tokio03 = ["async_std_tokio3"]
+
+async_std_default = ["async-std/unstable"]
+async_std_tokio1 = ["async-std/unstable", "async-std/tokio1"]
+async_std_tokio2 = ["async-std/unstable", "async-std/tokio02"]
+async_std_tokio3 = ["async-std/unstable", "async-std/tokio03"]
+
 [dev-dependencies]
 dotenv = "0.15"
 env_logger = "0.10"
+async-std = {version="1.12", features = ["attributes"]}
 
 
 [lib]
 name = "cfix"
-
-

@@ -37,6 +37,14 @@ impl ResponseMessage {
         }
     }
 
+    pub fn matching_field_value(&self, msg_type: &str, field: Field, value: &str) -> bool {
+        (self.get_message_type() == msg_type)
+            && (self
+                .get_field_value(field)
+                .map(|v| v == value)
+                .unwrap_or(false))
+    }
+
     pub fn get_field_value(&self, field: Field) -> Option<String> {
         self.field_idx
             .get(&(field as u32))

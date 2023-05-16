@@ -8,7 +8,7 @@ use std::{
 };
 
 use async_std::{
-    channel::{bounded, Receiver, Sender},
+    channel::{bounded, Receiver},
     io::{BufWriter, WriteExt},
     net::TcpStream,
     stream::{self, StreamExt},
@@ -21,7 +21,10 @@ use crate::{
     messages::{HeartbeatReq, LogonReq, LogoutReq, RequestMessage, ResponseMessage, TestReq},
     types::ConnectionHandler,
 };
-use crate::{socket::Socket, types::MarketCallback};
+use crate::{
+    socket::Socket,
+    types::{MarketCallback, TradeCallback},
+};
 
 pub struct FixApi {
     config: Config,
@@ -32,14 +35,14 @@ pub struct FixApi {
     is_connected: Arc<AtomicBool>,
 
     res_receiver: Option<Receiver<ResponseMessage>>,
-    pub trigger: Sender<String>,
-    listener: Receiver<String>,
-
+    // pub trigger: Sender<String>,
+    // listener: Receiver<String>,
     pub container: Arc<RwLock<HashMap<String, Vec<ResponseMessage>>>>,
 
     //callback
     connection_handler: Option<Arc<dyn ConnectionHandler + Send + Sync>>,
     market_callback: Option<MarketCallback>,
+    trade_callback: Option<TradeCallback>,
 }
 
 impl FixApi {
@@ -51,7 +54,7 @@ impl FixApi {
         sender_comp_id: String,
         heartbeat_interval: Option<u32>,
     ) -> Self {
-        let (tx, rx) = bounded(1);
+        // let (tx, rx) = bounded(1);
         Self {
             config: Config::new(
                 host,
@@ -62,14 +65,15 @@ impl FixApi {
             ),
             stream: None,
             res_receiver: None,
-            trigger: tx,
-            listener: rx,
+            // trigger: tx,
+            // listener: rx,
             is_connected: Arc::new(AtomicBool::new(false)),
             seq: Arc::new(AtomicU32::new(1)),
             container: Arc::new(RwLock::new(HashMap::new())),
             sub_id,
             connection_handler: None,
             market_callback: None,
+            trade_callback: None,
         }
     }
 
@@ -79,6 +83,15 @@ impl FixApi {
     {
         self.market_callback = Some(Arc::new(move |mdresult: InternalMDResult| -> () {
             callback(mdresult)
+        }));
+    }
+
+    pub fn register_trade_callback<F>(&mut self, callback: F)
+    where
+        F: Fn(ResponseMessage) -> () + Send + Sync + 'static,
+    {
+        self.trade_callback = Some(Arc::new(move |res: ResponseMessage| -> () {
+            callback(res)
         }));
     }
 
@@ -157,46 +170,6 @@ impl FixApi {
         self.is_connected.load(Ordering::Relaxed)
     }
 
-    pub async fn wait_notifier(&self) -> Result<String, Error> {
-        if !self.is_connected() {
-            return Err(Error::NotConnected);
-        }
-        self.listener.recv().await.map_err(|e| e.into())
-    }
-
-    pub async fn check_responses(
-        &self,
-        arg: HashMap<&str, (&str, Field, String)>,
-    ) -> Result<Vec<ResponseMessage>, Error> {
-        let mut cont = self.container.write().await;
-        for (msg_type, (mt, field, value)) in arg.into_iter() {
-            if let Some(responses) = cont.get_mut(msg_type) {
-                let mut result = Vec::new();
-                let idx: Vec<usize> = responses
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, v)| v.get_field_value(field).filter(|v| v == &value).is_some())
-                    .map(|(i, _)| i)
-                    .collect();
-                for i in idx.into_iter().rev() {
-                    result.push(responses.remove(i));
-                }
-
-                if !result.is_empty() {
-                    return Ok(result);
-                }
-            }
-        }
-        Err(Error::NoResponse)
-    }
-    //
-    // request
-    //
-    // pub async fn heartbeat(&mut self) -> Result<(), Error> {
-    //     self.send_message(HeartbeatReq::default()).await?;
-    //     Ok(())
-    // }
-
     pub async fn logon(&self) -> Result<(), Error> {
         // TODO check the connected
 
@@ -217,6 +190,7 @@ impl FixApi {
                         }
 
                         let stream = self.stream.clone().unwrap();
+                        let stream_clone = self.stream.clone().unwrap();
                         let sub_id = self.sub_id;
                         let config = self.config.clone();
                         let seq = self.seq.clone();
@@ -236,9 +210,17 @@ impl FixApi {
 
                                 let mut writer = BufWriter::new(stream.as_ref());
                                 let _ = writer.write_all(req.as_bytes()).await;
-                                writer.flush().await.unwrap_or_else(|e| {
-                                    log::error!("Failed to send the heartbeat request - {:?}", e);
-                                });
+
+                                match writer.flush().await {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        log::error!(
+                                            "Failed to send the heartbeat request - {:?}",
+                                            err
+                                        );
+                                        stream.shutdown(std::net::Shutdown::Both).unwrap();
+                                    }
+                                }
                             }
                         };
                         let send_request_clone = send_request.clone();
@@ -252,7 +234,7 @@ impl FixApi {
                                 stream::interval(Duration::from_secs(hb_interval));
 
                             while let Some(_) = heartbeat_stream.next().await {
-                                let req = HeartbeatReq::default();
+                                let req = HeartbeatReq::new(None);
                                 send_request(Box::new(req)).await;
                                 log::debug!("Sent the heartbeat");
                             }
@@ -262,26 +244,32 @@ impl FixApi {
                         // handle the responses
 
                         // notifier
-                        let tx = self.trigger.clone();
+                        // let tx = self.trigger.clone();
                         let recv = self.res_receiver.clone().unwrap();
-                        let cont = self.container.clone();
+                        // let cont = self.container.clone();
                         let market_callback = self.market_callback.clone();
+                        let trade_callback = self.trade_callback.clone();
 
                         task::spawn(async move {
                             while let Ok(res) = recv.recv().await {
                                 let msg_type = res.get_message_type();
-                                let mtype = String::from(msg_type);
                                 // notify? or send? via channel?
                                 match msg_type {
+                                    "0" => {
+                                        log::debug!("Heartbeat received");
+                                    }
                                     "5" => {
                                         // 5 : logout
-                                        tx.send(mtype).await.unwrap_or_else(|e| {
-                                            // fatal
-                                            log::error!(
-                                            "Failed to notify that Logout tag is received - {:?}",
-                                            e
-                                            );
-                                        });
+                                        log::debug!("Logged out");
+                                        //disconnect
+                                        stream_clone.shutdown(std::net::Shutdown::Both).ok();
+                                        // tx.send(mtype).await.unwrap_or_else(|e| {
+                                        //     // fatal
+                                        //     log::error!(
+                                        //     "Failed to notify that Logout tag is received - {:?}",
+                                        //     e
+                                        //     );
+                                        // });
                                     }
                                     "1" => {
                                         // send back with test request id
@@ -294,7 +282,7 @@ impl FixApi {
                                         }
                                     }
                                     "W" | "X" | "Y" => {
-                                        // market data
+                                        // For market data
                                         let symbol_id = res
                                             .get_field_value(Field::Symbol)
                                             .unwrap_or("0".into())
@@ -336,29 +324,52 @@ impl FixApi {
                                             market_callback(mdresult);
                                         }
                                     }
+                                    // "8" => {
+                                    //     // execution report
+                                    //     match res.get_field_value(Field::ExecType).unwrap().as_str()
+                                    //     {
+                                    //         "F" | "C" | "8" => {
+                                    //             // F: Trade
+                                    //             // C: Expired
+                                    //             // 8: Rejected
+                                    //             // send to handler
+                                    //             continue;
+                                    //         }
+                                    //         _ => {}
+                                    //     }
+                                    //
+                                    //     log::debug!("{}", res.get_message());
+                                    //     {
+                                    //         let mut cont = cont.write().await;
+                                    //         cont.entry(mtype.clone())
+                                    //             .or_insert(Vec::new())
+                                    //             .push(res);
+                                    //     }
+                                    //
+                                    //     tx.send(mtype).await.unwrap_or_else(|e| {
+                                    //             // fatal
+                                    //             log::error!( "Failed to notify that the response is received - {:?}", e);
+                                    //             });
+                                    // }
                                     _ => {
                                         log::debug!("{}", res.get_message());
-
-                                        // FIXME later remove line
-                                        if let Some(seq_num) = res.get_field_value(Field::MsgSeqNum)
-                                        {
-                                            // store the response in container.
-                                            {
-                                                let mut cont = cont.write().await;
-                                                cont.entry(mtype.clone())
-                                                    .or_insert(Vec::new())
-                                                    .push(res);
-                                            }
-                                            tx.send(mtype).await.unwrap_or_else(|e| {
-                                                // fatal
-                                                log::error!(
-                                                "Failed to notify that the response is received - {:?}",
-                                                e
-                                            );
-                                        });
-                                        } else {
-                                            log::debug!("No seq number : {}", res.get_message());
+                                        if let Some(trade_callback) = trade_callback.clone() {
+                                            trade_callback(res);
                                         }
+                                        // {
+                                        //     let mut cont = cont.write().await;
+                                        //     cont.entry(mtype.clone())
+                                        //         .or_insert(Vec::new())
+                                        //         .push(res);
+                                        // }
+
+                                        // tx.send(mtype).await.unwrap_or_else(|e| {
+                                        //         // fatal
+                                        //         log::error!(
+                                        //         "Failed to notify that the response is received - {:?}",
+                                        //         e
+                                        //     );
+                                        // });
                                     }
                                 }
                             }

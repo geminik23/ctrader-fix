@@ -1,6 +1,6 @@
 use chrono::NaiveDateTime;
 use serde::Deserialize;
-use std::{collections::HashMap, future::Future, pin::Pin, str::FromStr, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use async_trait::async_trait;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -31,6 +31,11 @@ pub trait MarketDataHandler {
 
     async fn on_rejected_spot_subscription(&self, symbol_id: u32, err_msg: String);
     async fn on_rejected_depth_subscription(&self, symbol_id: u32, err_msg: String);
+}
+
+#[async_trait]
+pub trait TradeDataHandler {
+    async fn on_execution_report(&self, exec_report: ExecutionReport);
 }
 
 // == Trade type definitions
@@ -76,14 +81,14 @@ impl FromStr for ExecutionType {
             "8" => Ok(ExecutionType::Rejected),
             "C" => Ok(ExecutionType::Expired),
             "F" => Ok(ExecutionType::Trade),
-            "I" => Ok(ExecutionType::New),
+            "I" => Ok(ExecutionType::OrderStatus),
             _ => Err(ParseError(s.into())),
         }
     }
 }
 
 #[derive(Debug)]
-pub struct ExeuctionReport {
+pub struct ExecutionReport {
     /// 150.
     pub exec_type: ExecutionType,
     pub order_report: OrderReport,
@@ -327,10 +332,15 @@ pub enum Error {
     #[error("Field not found : {0}")]
     FieldNotFoundError(Field),
 
-    #[error("Request failed")]
-    RequestFailed,
-    #[error("Order Rejected : {0}")]
-    OrderRejected(String),
+    #[error("Missing argument error")]
+    MissingArgumentError,
+
+    // #[error("Request failed")]
+    // RequestFailed,
+    #[error("Order request failed : {0}")]
+    OrderFailed(String), // for "j"
+    #[error("Order cancel rejected : {0}")]
+    OrderCancelRejected(String),
 
     // subscription errors for market client
     #[error("Failed to {2} subscription {0}: {1}")]
@@ -341,6 +351,9 @@ pub enum Error {
     RequestingSubscription(u32, MarketType),
     #[error("Not susbscribed {1} for symbol({0})")]
     NotSubscribed(u32, MarketType),
+
+    #[error("Timeout error")]
+    TimeoutError,
 
     // internal errors
     #[error("Request rejected - {0}")]
@@ -353,8 +366,9 @@ pub enum Error {
     // reponse send error
     #[error(transparent)]
     SendError(#[from] async_std::channel::SendError<ResponseMessage>),
-    #[error(transparent)]
-    TriggerError(#[from] async_std::channel::SendError<String>),
+
+    // #[error(transparent)]
+    // TriggerError(#[from] async_std::channel::SendError<String>),
     #[error(transparent)]
     RecvError(#[from] async_std::channel::RecvError),
     #[error(transparent)]
@@ -364,6 +378,7 @@ pub enum Error {
 //
 // only for internal
 pub type MarketCallback = Arc<dyn Fn(InternalMDResult) -> () + Send + Sync>;
+pub type TradeCallback = Arc<dyn Fn(ResponseMessage) -> () + Send + Sync>;
 //
 
 pub enum InternalMDResult {

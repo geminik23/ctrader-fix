@@ -61,7 +61,7 @@ impl MarketDataHandler for Handler {
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenv::dotenv().ok();
     // env_logger::init();
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
 
     let host = env::var("CTRADER_FIX_HOST").unwrap();
     let username = env::var("CTRADER_FIX_USERNAME").unwrap();
@@ -94,9 +94,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         );
 
         // TEST invalid symbol
-        log::info!("Test subscription with invalid symbol");
-        client.subscribe_spot(500000).await?;
-        async_std::task::sleep(std::time::Duration::from_secs(2)).await;
+        // log::info!("Test subscription with invalid symbol");
+        // client.subscribe_spot(500000).await?;
+        // async_std::task::sleep(std::time::Duration::from_secs(2)).await;
 
         log::info!(
             "Spot subscription list : {:?}",
@@ -160,6 +160,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // if let Err(err) = client.unsubscribe_depth(symbol_id).await {
         //     log::error!("{}", err);
         // }
+
+        // for test
+        // async_std::task::sleep(std::time::Duration::from_secs(500)).await;
     }
 
     // disconnect

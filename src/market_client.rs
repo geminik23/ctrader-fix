@@ -138,7 +138,7 @@ impl MarketClient {
 
     fn register_internal_handler(&mut self) {
         // clone
-        let trigger = self.internal.trigger.clone();
+        // let trigger = self.internal.trigger.clone();
         let spot_req_states_clone = self.spot_req_states.clone();
         let spot_market_data_clone = self.spot_market_data.clone();
 
@@ -150,7 +150,7 @@ impl MarketClient {
         let market_callback = move |mdresult: InternalMDResult| {
             // symbol_id is only valid for msg_type - 'W'
 
-            let tx = trigger.clone();
+            // let tx = trigger.clone();
             let spot_req_states_clone = spot_req_states_clone.clone();
             let spot_market_data_clone = spot_market_data_clone.clone();
             let depth_req_states_clone = depth_req_states_clone.clone();
