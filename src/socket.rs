@@ -52,19 +52,48 @@ impl Socket {
             let res = String::from_utf8_lossy(&buffer[..bytes_read]);
             log::trace!("Received msg : {}", res);
             self.msg_buffer.push_str(res.as_ref());
-            // println!("{:?}", self.msg_buffer);
 
-            if self.msg_buffer.find(&format!("{}10=", DELIMITER)).is_some()
-                && self.msg_buffer.ends_with(DELIMITER)
-            {
+            loop {
+                let mut pos = self
+                    .msg_buffer
+                    .find(&format!("{}10=", DELIMITER))
+                    .unwrap_or(usize::MAX);
+
+                if pos == usize::MAX {
+                    break;
+                }
+                pos += 8;
+                //
+                let mut rest = None;
+                let res = if pos == self.msg_buffer.len() {
+                    // send itself.
+                    ResponseMessage::new(&self.msg_buffer, DELIMITER)
+                } else {
+                    rest = Some(self.msg_buffer.split_off(pos));
+                    ResponseMessage::new(&self.msg_buffer, DELIMITER)
+                };
+
                 log::debug!("Handle response : {}", self.msg_buffer);
-                let res = ResponseMessage::new(&self.msg_buffer, DELIMITER);
                 if let Err(err) = self.res_sender.send(res).await {
                     log::error!("Failed to send ResponseMessage : {:?}", err);
                     break;
                 }
-                self.msg_buffer.clear();
+
+                if let Some(rest) = rest {
+                    self.msg_buffer = rest;
+                } else {
+                    self.msg_buffer.clear();
+                    break;
+                }
             }
+            // FIXME
+            // if self.msg_buffer.find(&format!("{}10=", DELIMITER)).is_some()
+            //     && self.msg_buffer.ends_with(DELIMITER)
+            // {
+            //     log::debug!("Handle response : {}", self.msg_buffer);
+            //     let res = ResponseMessage::new(&self.msg_buffer, DELIMITER);
+            //     self.msg_buffer.clear();
+            // }
         }
 
         is_connected.store(false, Ordering::Relaxed);
