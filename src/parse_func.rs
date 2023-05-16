@@ -44,13 +44,13 @@ pub fn parse_positions(res: &ResponseMessage) -> Result<Vec<PositionReport>, Err
 
     let mut raw_res: Vec<ResponseMessage> = Vec::new();
     if npos > 1 {
-        let parts: Vec<_> = res.get_message().split("|80=").collect();
+        let parts: Vec<_> = res.get_message().split("|8=").collect();
         let first = parts[0];
         raw_res.push(ResponseMessage::new(&format!("{}|", first), DELIMITER));
         let parts: Vec<_> = parts
             .iter()
             .skip(1)
-            .map(|part| ResponseMessage::new(&format!("80={}|", part), DELIMITER))
+            .map(|part| ResponseMessage::new(&format!("8={}|", part), DELIMITER))
             .collect();
         raw_res.extend(parts);
     } else {
@@ -208,13 +208,13 @@ pub fn parse_order_mass_status(res: ResponseMessage) -> Result<Vec<ExecutionRepo
 
     let mut raw_res: Vec<ResponseMessage> = Vec::new();
     if npos > 1 {
-        let parts: Vec<_> = res.get_message().split("|80=").collect();
+        let parts: Vec<_> = res.get_message().split("|8=").collect();
         let first = parts[0];
         raw_res.push(ResponseMessage::new(&format!("{}|", first), DELIMITER));
         let parts: Vec<_> = parts
             .iter()
             .skip(1)
-            .map(|part| ResponseMessage::new(&format!("80={}|", part), DELIMITER))
+            .map(|part| ResponseMessage::new(&format!("8={}|", part), DELIMITER))
             .collect();
         raw_res.extend(parts);
     } else {

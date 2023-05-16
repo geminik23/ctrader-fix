@@ -349,7 +349,6 @@ impl MarketClient {
                         md_req_id,
                         err_msg,
                     } => {
-                        println!("asdfasdfdas");
                         let spot_requested = spot_req_states_clone
                             .lock()
                             .await
