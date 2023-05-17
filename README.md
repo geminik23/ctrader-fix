@@ -77,6 +77,7 @@ Please note that you should only enable one of these features at a time.
   - [x] Added timeout in request methods.
   - [x] FIXED issue unhandled trade message (deadlock)
   - [x] Add handler for trade execution.
+  - [x] FIXED data parsing issue in Socket.
 	
 
 

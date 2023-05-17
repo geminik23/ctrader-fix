@@ -146,6 +146,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             client.depth_subscription_list().await
         );
 
+        log::info!("Depth data of symbol(3) - {:?}", client.depth_data(3).await);
+
         // unsubscribe
         client.unsubscribe_depth(symbol_id).await?;
         client.unsubscribe_depth(3).await?;

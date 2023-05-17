@@ -73,7 +73,7 @@ impl Socket {
                     ResponseMessage::new(&self.msg_buffer, DELIMITER)
                 };
 
-                log::debug!("Handle response : {}", self.msg_buffer);
+                log::debug!("Handle the response : {}", self.msg_buffer);
                 if let Err(err) = self.res_sender.send(res).await {
                     log::error!("Failed to send ResponseMessage : {:?}", err);
                     break;

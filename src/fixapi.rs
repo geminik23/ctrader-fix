@@ -283,78 +283,45 @@ impl FixApi {
                                     }
                                     "W" | "X" | "Y" => {
                                         // For market data
-                                        //
-                                        //TODO
-                                        let mut raw_res: Vec<ResponseMessage> = Vec::new();
-                                        {
-                                            let parts: Vec<_> =
-                                                res.get_message().split("|8=").collect();
-
-                                            if parts.len() == 1 {
-                                                raw_res.push(res.clone());
+                                        let symbol_id = res
+                                            .get_field_value(Field::Symbol)
+                                            .unwrap_or("0".into())
+                                            .parse::<u32>()
+                                            .unwrap();
+                                        // notify to callback
+                                        if let Some(market_callback) = market_callback.clone() {
+                                            let mdresult = if msg_type == "Y" {
+                                                let md_req_id = res
+                                                    .get_field_value(Field::MDReqID)
+                                                    .map(|v| v.clone())
+                                                    .unwrap_or("".into());
+                                                let err_msg = res
+                                                    .get_field_value(Field::Text)
+                                                    .map(|v| v.clone())
+                                                    .unwrap_or("".into());
+                                                InternalMDResult::MDReject {
+                                                    symbol_id,
+                                                    md_req_id,
+                                                    err_msg,
+                                                }
                                             } else {
-                                                let first = parts[0];
-                                                raw_res.push(ResponseMessage::new(
-                                                    &format!("{}|", first),
-                                                    DELIMITER,
-                                                ));
-                                                let parts: Vec<_> = parts
-                                                    .iter()
-                                                    .skip(1)
-                                                    .map(|part| {
-                                                        ResponseMessage::new(
-                                                            &format!("8={}|", part),
-                                                            DELIMITER,
-                                                        )
-                                                    })
-                                                    .collect();
-                                                raw_res.extend(parts);
-                                            }
-                                        }
+                                                let data = res.get_repeating_groups(
+                                                    Field::NoMDEntries,
+                                                    if msg_type == "W" {
+                                                        Field::MDEntryType
+                                                    } else {
+                                                        Field::MDUpdateAction
+                                                    },
+                                                    None,
+                                                );
+                                                InternalMDResult::MD {
+                                                    msg_type: msg_type.chars().next().unwrap(),
+                                                    symbol_id,
+                                                    data,
+                                                }
+                                            };
 
-                                        for res in raw_res.into_iter() {
-                                            // notify to callback
-                                            if let Some(market_callback) = market_callback.clone() {
-                                                // symbol id
-                                                let symbol_id = res
-                                                    .get_field_value(Field::Symbol)
-                                                    .unwrap_or("0".into())
-                                                    .parse::<u32>()
-                                                    .unwrap();
-
-                                                let mdresult = if msg_type == "Y" {
-                                                    let md_req_id = res
-                                                        .get_field_value(Field::MDReqID)
-                                                        .map(|v| v.clone())
-                                                        .unwrap_or("".into());
-                                                    let err_msg = res
-                                                        .get_field_value(Field::Text)
-                                                        .map(|v| v.clone())
-                                                        .unwrap_or("".into());
-                                                    InternalMDResult::MDReject {
-                                                        symbol_id,
-                                                        md_req_id,
-                                                        err_msg,
-                                                    }
-                                                } else {
-                                                    let data = res.get_repeating_groups(
-                                                        Field::NoMDEntries,
-                                                        if msg_type == "W" {
-                                                            Field::MDEntryType
-                                                        } else {
-                                                            Field::MDUpdateAction
-                                                        },
-                                                        None,
-                                                    );
-                                                    InternalMDResult::MD {
-                                                        msg_type: msg_type.chars().next().unwrap(),
-                                                        symbol_id,
-                                                        data,
-                                                    }
-                                                };
-
-                                                market_callback(mdresult);
-                                            }
+                                            market_callback(mdresult);
                                         }
                                     }
                                     // "8" => {

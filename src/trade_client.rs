@@ -21,7 +21,10 @@ use crate::{
 
 use std::{
     collections::VecDeque,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -29,6 +32,7 @@ use std::{
 struct TimeoutItem<T> {
     item: T,
     expiry: Instant,
+    read: AtomicBool,
 }
 
 impl<T> TimeoutItem<T> {
@@ -36,6 +40,7 @@ impl<T> TimeoutItem<T> {
         TimeoutItem {
             item,
             expiry: Instant::now() + lifetime,
+            read: AtomicBool::new(false),
         }
     }
 }
@@ -210,10 +215,16 @@ impl TradeClient {
             let q = self.queue.read().await;
             for v in q.iter().rev() {
                 let mut b = false;
+                let read = v.read.load(Ordering::Relaxed);
+                if read {
+                    continue;
+                }
+
                 for (msg_type, field, value) in arg.iter() {
                     if v.item.matching_field_value(msg_type, *field, value) {
                         b = true;
                         res = Some(v.item.clone());
+                        v.read.store(true, Ordering::Relaxed);
                         break;
                     }
                 }
@@ -281,12 +292,38 @@ impl TradeClient {
         let req = PositionsReq::new(pos_req_id.clone(), None);
         self.internal.send_message(req).await?;
 
-        match self
-            .fetch_response(vec![("AP", Field::PosReqID, pos_req_id)])
-            .await
-        {
-            Ok(res) => parse_func::parse_positions(&res),
-            Err(err) => Err(err),
+        let mut result = Vec::new();
+
+        loop {
+            match self
+                .fetch_response(vec![("AP", Field::PosReqID, pos_req_id.clone())])
+                .await
+            {
+                Ok(res) => {
+                    if res.get_message_type() == "AP"
+                        && res
+                            .get_field_value(Field::PosReqResult)
+                            .map_or(false, |v| v.as_str() == "0")
+                    {
+                        let no_pos = res
+                            .get_field_value(Field::TotalNumPosReports)
+                            .unwrap_or("0".into())
+                            .parse::<usize>()
+                            .unwrap();
+                        result.push(res);
+                        if no_pos <= result.len() {
+                            return parse_func::parse_positions(result);
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        return parse_func::parse_positions(vec![res]);
+                    }
+                }
+                Err(err) => {
+                    return Err(err);
+                }
+            }
         }
     }
 
@@ -300,19 +337,41 @@ impl TradeClient {
         let req = OrderMassStatusReq::new(mass_status_req_id.clone(), 7, issue_data);
         self.internal.send_message(req).await?;
 
-        match self
-            .fetch_response(vec![
-                ("8", Field::MassStatusReqID, mass_status_req_id.clone()),
-                ("j", Field::BusinessRejectRefID, mass_status_req_id.clone()),
-            ])
-            .await
-        {
-            Ok(res) => match res.get_message_type() {
-                "j" => Ok(Vec::new()),
-                "8" => parse_func::parse_order_mass_status(res),
-                _ => Err(Error::UnknownError),
-            },
-            Err(err) => Err(err),
+        let mut result = Vec::new();
+
+        loop {
+            match self
+                .fetch_response(vec![
+                    ("8", Field::MassStatusReqID, mass_status_req_id.clone()),
+                    ("j", Field::BusinessRejectRefID, mass_status_req_id.clone()),
+                ])
+                .await
+            {
+                Ok(res) => {
+                    return match res.get_message_type() {
+                        "j" => Ok(Vec::new()),
+                        "8" => {
+                            let no_report = res
+                                .get_field_value(Field::TotNumReports)
+                                .unwrap_or("0".into())
+                                .parse::<usize>()
+                                .unwrap();
+
+                            result.push(res);
+
+                            if no_report <= result.len() {
+                                parse_func::parse_order_mass_status(result)
+                            } else {
+                                continue;
+                            }
+                        }
+                        _ => Err(Error::UnknownError),
+                    };
+                }
+                Err(err) => {
+                    return Err(err);
+                }
+            }
         }
         // let res = self.fetch_response(seq_num).await?;
         // parse_order_mass(res)

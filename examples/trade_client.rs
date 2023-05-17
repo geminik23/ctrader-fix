@@ -30,7 +30,7 @@ impl TradeDataHandler for Handler {
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenv::dotenv().ok();
     // env_logger::init();
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
 
     let host = env::var("CTRADER_FIX_HOST").unwrap();
     let username = env::var("CTRADER_FIX_USERNAME").unwrap();
