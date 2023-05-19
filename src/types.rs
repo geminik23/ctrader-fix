@@ -18,19 +18,34 @@ pub trait ConnectionHandler {
 
 #[async_trait]
 pub trait MarketDataHandler {
+    /// Called when a new price for a symbol is received.
     async fn on_price_of(&self, symbol_id: u32, price: SpotPrice);
+
+    /// Called when a full refresh of the market depth is received.
     async fn on_market_depth_full_refresh(
         &self,
         symbol_id: u32,
         full_depth: HashMap<String, DepthPrice>,
     );
+
+    /// Called when an incremental update to the market depth is received.
     async fn on_market_depth_incremental_refresh(&self, refresh: Vec<IncrementalRefresh>);
 
-    async fn on_accpeted_spot_subscription(&self, symbol_id: u32);
-    async fn on_accpeted_depth_subscription(&self, symbol_id: u32);
+    /// Called when a spot subscription request has been accepted by the server.
+    /// This function has a default empty implementation and can be overridden by the struct implementing this trait.
+    async fn on_accpeted_spot_subscription(&self, symbol_id: u32) {}
 
-    async fn on_rejected_spot_subscription(&self, symbol_id: u32, err_msg: String);
-    async fn on_rejected_depth_subscription(&self, symbol_id: u32, err_msg: String);
+    /// Called when a depth subscription request has been accepted by the server.
+    /// This function has a default empty implementation and can be overridden by the struct implementing this trait.
+    async fn on_accpeted_depth_subscription(&self, symbol_id: u32) {}
+
+    /// Called when a spot subscription request has been rejected by the server.
+    /// This function has a default empty implementation and can be overridden by the struct implementing this trait.
+    async fn on_rejected_spot_subscription(&self, symbol_id: u32, err_msg: String) {}
+
+    /// Called when a depth subscription request has been rejected by the server.
+    /// This function has a default empty implementation and can be overridden by the struct implementing this trait.
+    async fn on_rejected_depth_subscription(&self, symbol_id: u32, err_msg: String) {}
 }
 
 #[async_trait]
@@ -60,7 +75,7 @@ pub struct PositionReport {
     pub guaranteed_sl: Option<bool>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ExecutionType {
     OrderStatus,
     New,
@@ -98,40 +113,53 @@ pub struct ExecutionReport {
 pub struct OrderReport {
     /// Instrument identificators are provided by Spotware. 55
     pub symbol: u32,
+
     /// cTrader order id. 37
     pub order_id: String,
+
     /// Unique identifier for the order, allocated by the client. 11
     pub cl_ord_id: String,
+
     /// Position ID. 72
     pub pos_main_rept_id: String,
+
     /// Client custom order label. 494
     pub designation: Option<String>,
 
     /// Order status. 39
     pub order_status: OrderStatus,
+
     /// Order type : Marekt, Limit, Stop, Stop limit. 40
     pub order_type: OrderType,
+
     /// 54.
     pub side: Side,
 
     //** price **//
     /// If supplied in the NewOrderSingle, it is echoed back in this ExecutionReport. 44
     pub price: Option<f64>,
+
     /// If supplied in the NewOrderSingle, it is echoed back in this ExecutionReport. 99
     pub stop_px: Option<f64>,
+
     /// The price at which the deal was filled. For an IOC or GTD order, this is the VWAP (Volume Weighted Average Price) of the filled order. 6
     pub avx_px: Option<f64>,
 
     /// The absolute price at which Take Profit will be triggered. 1000
     pub absolute_tp: Option<f64>,
+
     /// The distance in pips from the entry price at which the Take Profit will be triggered. 1001
     pub reltative_tp: Option<f64>,
+
     /// The absolute price at which Stop Loss will be triggered. 1002
     pub absolute_sl: Option<f64>,
+
     /// The distance in pips from the entry price at which the Stop Loss will be triggered. 1003
     pub reltative_sl: Option<f64>,
+
     /// Indicates if Stop Loss is trailing. 1004
     pub trailing_sl: Option<bool>,
+
     /// Indicated trigger method of the Stop Loss. 1005
     ///
     /// 1 = The Stop Loss will be triggered by the trade side.
@@ -151,14 +179,16 @@ pub struct OrderReport {
     /// The bought/sold amount of the order which has been filled on this (last) fill. 32
     pub last_qty: Option<f64>,
 
-    // FIXME
+    // FIXME new type?
     /// 59
     /// 1 = Good Till Cancel (GTC);
     /// 3 = Immediate Or Cancel (IOC);
     /// 6 = Good Till Date (GTD).
     pub time_in_force: String,
+
     /// Time the transaction represented by this ExecutionReport occurred message (in UTC). 60
     pub transact_time: NaiveDateTime,
+
     /// If supplied in the NewOrderSingle, it is echoed back in this ExecutionReport. 126
     pub expire_time: Option<NaiveDateTime>,
 
@@ -177,59 +207,6 @@ pub enum TimeInForce {
     ImmediateOrCancel = 3,
     GoodTillDate = 6,
 }
-
-// #[derive(Debug)]
-// pub struct NewOrderReport {
-//     pub symbol: u32,
-//     pub order_id: String,
-//     pub price: Option<f64>,
-//     pub stop_px: Option<f64>,
-//     pub cum_qty: f64,
-//     pub order_qty: f64,
-//     pub leaves_qty: f64,
-//     pub order_status: OrderStatus,
-//     pub order_type: OrderType,
-//
-//     pub side: Side,
-//     pub time_in_force: String,
-//     pub transact_time: NaiveDateTime,
-//     pub pos_main_rept_id: String,
-// }
-//
-// #[derive(Debug)]
-// pub struct OrderTradeReport {
-//     pub symbol: u32,
-//     pub order_id: String,
-//     pub price: Option<f64>,
-//     pub stop_px: Option<f64>,
-//     pub avx_px: f64, // req
-//     pub order_qty: f64,
-//     pub leaves_qty: f64,
-//     pub order_status: OrderStatus,
-//     pub order_type: OrderType,
-//
-//     pub side: Side,
-//     pub time_in_force: String,
-//     pub transact_time: NaiveDateTime,
-//     pub pos_main_rept_id: String,
-// }
-//
-// #[derive(Debug)]
-// pub struct OrderStatusReport {
-//     pub symbol: u32,
-//     pub order_id: String,
-//     pub price: f64,
-//     pub cum_qty: f64,
-//     pub order_qty: f64,
-//     pub leaves_qty: f64,
-//     pub order_status: OrderStatus,
-//     pub order_type: OrderType,
-//
-//     pub side: Side,
-//     pub time_in_force: String,
-//     pub transact_time: NaiveDateTime,
-//     pub pos_main_rept_id: String,
-// }
 
 #[derive(Debug)]
 pub enum OrderStatus {

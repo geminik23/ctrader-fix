@@ -32,7 +32,7 @@ use std::{
 struct TimeoutItem<T> {
     item: T,
     expiry: Instant,
-    read: AtomicBool,
+    consumed: AtomicBool,
 }
 
 impl<T> TimeoutItem<T> {
@@ -40,7 +40,7 @@ impl<T> TimeoutItem<T> {
         TimeoutItem {
             item,
             expiry: Instant::now() + lifetime,
-            read: AtomicBool::new(false),
+            consumed: AtomicBool::new(false),
         }
     }
 }
@@ -215,8 +215,8 @@ impl TradeClient {
             let q = self.queue.read().await;
             for v in q.iter().rev() {
                 let mut b = false;
-                let read = v.read.load(Ordering::Relaxed);
-                if read {
+                let consumed = v.consumed.load(Ordering::Relaxed);
+                if consumed {
                     continue;
                 }
 
@@ -224,7 +224,7 @@ impl TradeClient {
                     if v.item.matching_field_value(msg_type, *field, value) {
                         b = true;
                         res = Some(v.item.clone());
-                        v.read.store(true, Ordering::Relaxed);
+                        v.consumed.store(true, Ordering::Relaxed);
                         break;
                     }
                 }
@@ -245,7 +245,6 @@ impl TradeClient {
                         remain = self.timeout - past;
 
                         // check if there is more waiting receiver.
-                        // FIXME
                         if self.receiver.receiver_count() > 1 {
                             self.signal.try_send(()).ok();
                         }
@@ -373,8 +372,6 @@ impl TradeClient {
                 }
             }
         }
-        // let res = self.fetch_response(seq_num).await?;
-        // parse_order_mass(res)
     }
 
     async fn new_order(&self, req: NewOrderSingleReq) -> Result<ExecutionReport, Error> {
@@ -406,21 +403,19 @@ impl TradeClient {
         side: Side,
         order_qty: f64,
         cl_ord_id: Option<String>,
-        pos_id: Option<String>,
-        transact_time: Option<NaiveDateTime>,
         custom_ord_label: Option<String>,
     ) -> Result<ExecutionReport, Error> {
         let req = NewOrderSingleReq::new(
             cl_ord_id.unwrap_or(self.create_unique_id()),
             symbol,
             side,
-            transact_time,
+            None,
             order_qty,
             OrderType::MARKET,
             None,
             None,
             None,
-            pos_id,
+            None,
             custom_ord_label,
         );
         self.new_order(req).await
@@ -433,22 +428,20 @@ impl TradeClient {
         price: f64,
         order_qty: f64,
         cl_ord_id: Option<String>,
-        pos_id: Option<String>,
         expire_time: Option<NaiveDateTime>,
-        transact_time: Option<NaiveDateTime>,
         custom_ord_label: Option<String>,
     ) -> Result<ExecutionReport, Error> {
         let req = NewOrderSingleReq::new(
             cl_ord_id.unwrap_or(self.create_unique_id()),
             symbol,
             side,
-            transact_time,
+            None,
             order_qty,
             OrderType::LIMIT,
             Some(price),
             None,
             expire_time,
-            pos_id,
+            None,
             custom_ord_label,
         );
 
@@ -462,22 +455,20 @@ impl TradeClient {
         stop_px: f64,
         order_qty: f64,
         cl_ord_id: Option<String>,
-        pos_id: Option<String>,
         expire_time: Option<NaiveDateTime>,
-        transact_time: Option<NaiveDateTime>,
         custom_ord_label: Option<String>,
     ) -> Result<ExecutionReport, Error> {
         let req = NewOrderSingleReq::new(
             cl_ord_id.unwrap_or(self.create_unique_id()),
             symbol,
             side,
-            transact_time,
+            None,
             order_qty,
             OrderType::STOP,
             None,
             Some(stop_px),
             expire_time,
-            pos_id,
+            None,
             custom_ord_label,
         );
 

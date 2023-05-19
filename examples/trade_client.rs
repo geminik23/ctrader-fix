@@ -67,7 +67,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         { // Test : market order & (add more lot & close partially & closs position) with change_position
              // log::info!("New market order");
              // let res = client
-             //     .new_market_order(1, Side::BUY, 1000.0, None, None, None, None)
+             //     .new_market_order(1, Side::BUY, 1000.0, None, None)
              //     .await?;
              // log::info!("Result of market order - {:?}", res);
              // async_std::task::sleep(std::time::Duration::from_secs(2)).await;
@@ -117,7 +117,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         { // Test : market order & get position report & close position
              // log::info!("New market order");
              // let order_res = client
-             //     .new_market_order(1, Side::BUY, 1000.0, None, None, None, None)
+             //     .new_market_order(1, Side::BUY, 1000.0, None, None)
              //     .await?;
              // log::info!("Result of market order - {:?}", res);
              // async_std::task::sleep(std::time::Duration::from_secs(2)).await;
@@ -139,7 +139,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         { // Test : stop order
              // log::info!("New stop order");
              // let res = client
-             //     .new_stop_order(1, Side::BUY, 1.1, 1000.0, None, None, None, None, None)
+             //     .new_stop_order(1, Side::BUY, 1.1, 1000.0, None, None, None)
              //     .await?;
              // log::info!("Result of stop order - {:?}", res);
         }
@@ -147,7 +147,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         { // Test : limit order & replace price & cancel order
              // log::info!("New limit order");
              // let res = client
-             //     .new_limit_order(1, Side::BUY, 0.8, 1000.0, None, None, None, None, None)
+             //     .new_limit_order(1, Side::BUY, 0.8, 1000.0, None, None, None)
              //     .await?;
              // log::info!("Result of limit order - {:?}", res);
              // async_std::task::sleep(std::time::Duration::from_secs(2)).await;
@@ -175,7 +175,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
              //     // .cancel_order(None, Some(res.order_report.cl_ord_id))
              //     .await;
              // log::info!("Result of cancel order - {:?}", res);
-             //
         }
 
         // for test

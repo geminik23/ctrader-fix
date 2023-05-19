@@ -6,7 +6,6 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct ResponseMessage {
     message: String,
-    // fields: HashMap<u32, String>,
     field_idx: HashMap<u32, usize>,
     fields: Vec<(u32, String)>,
 }

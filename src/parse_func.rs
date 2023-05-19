@@ -4,7 +4,7 @@ use crate::{
     messages::ResponseMessage,
     types::{
         Error, ExecutionReport, ExecutionType, Field, OrderReport, OrderStatus, OrderType,
-        PositionReport, Side, SymbolInformation, DELIMITER,
+        PositionReport, Side, SymbolInformation,
     },
 };
 
@@ -36,27 +36,6 @@ pub fn parse_security_list(res: &ResponseMessage) -> Result<Vec<SymbolInformatio
 }
 
 pub fn parse_positions(res: Vec<ResponseMessage>) -> Result<Vec<PositionReport>, Error> {
-    // let npos = res
-    //     .get_field_value(Field::TotalNumPosReports)
-    //     .unwrap_or("0".into())
-    //     .parse::<u32>()
-    //     .unwrap_or(0);
-    //
-    // let mut raw_res: Vec<ResponseMessage> = Vec::new();
-    // if npos > 1 {
-    //     let parts: Vec<_> = res.get_message().split("|8=").collect();
-    //     let first = parts[0];
-    //     raw_res.push(ResponseMessage::new(&format!("{}|", first), DELIMITER));
-    //     let parts: Vec<_> = parts
-    //         .iter()
-    //         .skip(1)
-    //         .map(|part| ResponseMessage::new(&format!("8={}|", part), DELIMITER))
-    //         .collect();
-    //     raw_res.extend(parts);
-    // } else {
-    //     raw_res.push(ResponseMessage::new(res.get_message(), DELIMITER));
-    // }
-
     Ok(res
         .into_iter()
         .filter(|res| res.get_field_value(Field::PosReqResult).unwrap() == "0")
@@ -200,27 +179,6 @@ pub fn parse_execution_report(res: ResponseMessage) -> Result<ExecutionReport, E
 }
 
 pub fn parse_order_mass_status(res: Vec<ResponseMessage>) -> Result<Vec<ExecutionReport>, Error> {
-    // let npos = res
-    //     .get_field_value(Field::TotNumReports)
-    //     .unwrap_or("0".into())
-    //     .parse::<u32>()
-    //     .unwrap_or(0);
-    //
-    // let mut raw_res: Vec<ResponseMessage> = Vec::new();
-    // if npos > 1 {
-    //     let parts: Vec<_> = res.get_message().split("|8=").collect();
-    //     let first = parts[0];
-    //     raw_res.push(ResponseMessage::new(&format!("{}|", first), DELIMITER));
-    //     let parts: Vec<_> = parts
-    //         .iter()
-    //         .skip(1)
-    //         .map(|part| ResponseMessage::new(&format!("8={}|", part), DELIMITER))
-    //         .collect();
-    //     raw_res.extend(parts);
-    // } else {
-    //     raw_res.push(ResponseMessage::new(res.get_message(), DELIMITER));
-    // }
-
     Ok(res
         .into_iter()
         .map(|res| parse_execution_report(res).unwrap())

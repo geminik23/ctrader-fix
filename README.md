@@ -1,8 +1,10 @@
 # cTrader FIX API in Rust
 
-This project is currently in **active development** and is not yet ready for production use.
+This repository is an unofficial Rust implementation of the FIX API in Rust for the cTrader trading platform
 
-This is a Rust implementation of the FIX API for the cTrader trading platform. It's built using the async-std library, providing an asynchronous and simple interface for interacting with the cTrader platform through the Financial Information eXchange (FIX) protocol.
+Built using the async runtime library, it provides an asynchronous and simple interface for interacting with the cTrader platform through the Financial Information eXchange (FIX) protocol.
+
+**This project is now ready for use. However, please note that it is still under active development and bugs may exist.**
 
 
 ## Cargo Features
@@ -31,55 +33,57 @@ ctrader-fix = { version = "0.4", features = ["tokio1"] }
 Please note that you should only enable one of these features at a time.
 
 
-## To-Do 
 
-- [x] Base FixApi Implementation
-- [x] Base Requests
-- [x] Example code
-  - [x] Connect
-  - [x] Send logon
-  - [x] Send logout
-  - [x] Disconnect
-- [x] Handle responses
-  - [x] Implement response structure
-  - [x] Implement response handler - notify
-- [x] Add Error struct using `thiserror`
-- [x] MarketClient
-  - [x] Internal Market data Callback 
-  - [x] Parsing response message.
-  - [x] Subscribe the symbol for spot 
-  - [x] Implement the check the request has accepted method.
-  - [x] Test for parsing market datas
-  - [x] Unsubscribe the symbol for spot
-  - [x] Subscribe the symbol for depth 
-  - [x] Unsubscribe the symbol for depth 
-  - [x] Parsing the spot market data in callback
-  - [x] Add quote spot data method
-  - [x] Parsing the depth market data in callback
-  - [x] Parsing the incremental market data in callback
-  - [x] Market data handler in example code.
-  - [x] Fix callback method for subscription - ~~waiting constantly in subscription method when market is closed~~
-- [x] FIXED identify with message type and id - ~~issue identify the response with sequence number~~
-- [x] FIXED the issue of heartbeat.
-- [x] TradeClient 
-  - [x] Add fetch methods
-  - [x] Implement fetch_security_list to fetch the security list
-  - [x] Implement fetch_positions
-  - [x] Implement fetch_all_order_status
-  - [x] Implement new_market_order
-  - [x] Implement new_limit_order
-  - [x] Implement new_stop_order
-  - [x] Implement parse_func for ExecutionReport
-  - [x] Implement cancel_order
-  - [x] Implement replace_order
-  - [x] Implement adjust_position_size
-  - [x] Implement close_position
-  - [x] Added timeout in request methods.
-  - [x] FIXED issue unhandled trade message (deadlock)
-  - [x] Add handler for trade execution.
-  - [x] FIXED data parsing issue in Socket.
-	
+## Progress
 
+Below is the current progress on the development of this project:
+
+- Base FixApi implementation :white_check_mark:
+- Base requests :white_check_mark:
+- Example code :white_check_mark:
+    - Connect :white_check_mark:
+    - Send logon :white_check_mark:
+    - Send logout :white_check_mark:
+    - Disconnect :white_check_mark:
+- Handle responses :white_check_mark:
+    - Implement response structure :white_check_mark:
+    - Implement response handler - notify :white_check_mark:
+- Add Error struct using `thiserror` :white_check_mark:
+- MarketClient :white_check_mark:
+    - Internal Market data Callback :white_check_mark:
+    - Parsing response message :white_check_mark:
+    - Subscribe the symbol for spot :white_check_mark:
+    - Implement the check the request has accepted method :white_check_mark:
+    - Test for parsing market datas :white_check_mark:
+    - Unsubscribe the symbol for spot :white_check_mark:
+    - Subscribe the symbol for depth :white_check_mark:
+    - Unsubscribe the symbol for depth :white_check_mark:
+    - Parsing the spot market data in callback :white_check_mark:
+    - Add quote spot data method :white_check_mark:
+    - Parsing the depth market data in callback :white_check_mark:
+    - Parsing the incremental market data in callback :white_check_mark:
+    - Market data handler in example code :white_check_mark:
+    - Fix callback method for subscription :white_check_mark:
+- FIXED identify with message type and id :white_check_mark:
+- FIXED the issue of heartbeat :white_check_mark:
+- TradeClient :white_check_mark:
+    - Add fetch methods :white_check_mark:
+    - Implement fetch_security_list to fetch the security list :white_check_mark:
+    - Implement fetch_positions :white_check_mark:
+    - Implement fetch_all_order_status :white_check_mark:
+    - Implement new_market_order :white_check_mark:
+    - Implement new_limit_order :white_check_mark:
+    - Implement new_stop_order :white_check_mark:
+    - Implement parse_func for ExecutionReport :white_check_mark:
+    - Implement cancel_order :white_check_mark:
+    - Implement replace_order :white_check_mark:
+    - Implement adjust_position_size :white_check_mark:
+    - Implement close_position :white_check_mark:
+    - Added timeout in request methods :white_check_mark:
+    - FIXED issue unhandled trade message (deadlock) :white_check_mark:
+    - Add handler for trade execution :white_check_mark:
+    - FIXED data parsing issue in Socket :white_check_mark:
+	- Removed unnecessary arguments for new order methods :white_check_mark:
 
 
 ## License
