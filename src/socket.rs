@@ -65,7 +65,7 @@ impl Socket {
                 pos += 8;
                 //
                 let mut rest = None;
-                let res = if pos == self.msg_buffer.len() {
+                let res = if pos >= self.msg_buffer.len() {
                     // send itself.
                     ResponseMessage::new(&self.msg_buffer, DELIMITER)
                 } else {

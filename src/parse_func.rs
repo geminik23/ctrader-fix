@@ -139,7 +139,7 @@ pub fn parse_execution_report(res: ResponseMessage) -> Result<ExecutionReport, E
                 .map(|v| v.parse::<f64>().unwrap()),
             trailing_sl: res
                 .get_field_value(Field::TrailingSL)
-                .map(|v| v.parse::<bool>().unwrap()),
+                .map(|v| v.parse::<bool>().unwrap_or(false)),
             trigger_method_sl: res
                 .get_field_value(Field::TriggerMethodSL)
                 .map(|v| v.parse::<u32>().unwrap()),
