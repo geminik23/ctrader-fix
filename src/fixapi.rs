@@ -222,6 +222,7 @@ impl FixApi {
 
                         let hb_interval = self.config.heart_beat as u64;
 
+                        let is_connected = self.is_connected.clone();
                         //
                         // send heartbeat per hb_interval
                         task::spawn(async move {
@@ -229,6 +230,9 @@ impl FixApi {
                                 stream::interval(Duration::from_secs(hb_interval));
 
                             while let Some(_) = heartbeat_stream.next().await {
+                                if !is_connected.load(Ordering::Relaxed) {
+                                    break;
+                                }
                                 let req = HeartbeatReq::new(None);
                                 send_request(Box::new(req)).await;
                                 log::debug!("Sent the heartbeat");
@@ -242,8 +246,13 @@ impl FixApi {
                         let market_callback = self.market_callback.clone();
                         let trade_callback = self.trade_callback.clone();
 
+                        let is_connected = self.is_connected.clone();
                         task::spawn(async move {
                             while let Ok(res) = recv.recv().await {
+                                if !is_connected.load(Ordering::Relaxed) {
+                                    break;
+                                }
+
                                 let msg_type = res.get_message_type();
                                 // notify? or send? via channel?
                                 match msg_type {

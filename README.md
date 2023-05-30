@@ -14,13 +14,13 @@ This crate allows you to use `tokio` runtime featured in `async-std` by specifyi
 To use the crate with the default configuration, add the following line to your `Cargo.toml`:
 
 ```toml
-ctrader-fix = "0.4.4"
+ctrader-fix = "0.4.5"
 ```
 
 To use a specific Tokio configuration, specify the feature like this:
 
 ```toml
-ctrader-fix = { version = "0.4.4", features = ["tokio1"] }
+ctrader-fix = { version = "0.4.5", features = ["tokio1"] }
 ```
 
 ### Available Features
