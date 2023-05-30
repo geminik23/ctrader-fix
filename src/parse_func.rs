@@ -137,15 +137,11 @@ pub fn parse_execution_report(res: ResponseMessage) -> Result<ExecutionReport, E
             reltative_sl: res
                 .get_field_value(Field::RelativeSL)
                 .map(|v| v.parse::<f64>().unwrap()),
-            trailing_sl: res
-                .get_field_value(Field::TrailingSL)
-                .map(|v| v.parse::<bool>().unwrap_or(false)),
+            trailing_sl: res.get_field_value(Field::TrailingSL).map(|v| v == "Y"),
             trigger_method_sl: res
                 .get_field_value(Field::TriggerMethodSL)
                 .map(|v| v.parse::<u32>().unwrap()),
-            guaranteed_sl: res
-                .get_field_value(Field::GuaranteedSL)
-                .map(|v| v.parse::<bool>().unwrap()),
+            guaranteed_sl: res.get_field_value(Field::GuaranteedSL).map(|v| v == "Y"),
 
             cum_qty: res
                 .get_field_value(Field::CumQty)
