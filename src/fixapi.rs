@@ -4,13 +4,15 @@ use std::{
         atomic::{AtomicBool, AtomicU32, Ordering},
         Arc,
     },
+    time::Duration,
 };
 
 use async_std::{
     channel::{bounded, Receiver},
     io::{BufWriter, WriteExt},
     net::TcpStream,
-    // stream::StreamExt,
+    stream,
+    stream::StreamExt,
     sync::RwLock,
     task,
 };
@@ -34,7 +36,7 @@ pub struct FixApi {
     is_connected: Arc<AtomicBool>,
 
     res_receiver: Option<Receiver<ResponseMessage>>,
-    pub container: Arc<RwLock<HashMap<String, Vec<ResponseMessage>>>>,
+    // pub container: Arc<RwLock<HashMap<String, Vec<ResponseMessage>>>>,
 
     // ReqMessage Container
     message_buffer: Arc<RwLock<VecDeque<(u32, String)>>>,
@@ -66,7 +68,7 @@ impl FixApi {
             res_receiver: None,
             is_connected: Arc::new(AtomicBool::new(false)),
             seq: Arc::new(AtomicU32::new(1)),
-            container: Arc::new(RwLock::new(HashMap::new())),
+            // container: Arc::new(RwLock::new(HashMap::new())),
             sub_id,
 
             message_buffer: Arc::new(RwLock::new(VecDeque::new())),
@@ -184,7 +186,7 @@ impl FixApi {
         self.is_connected.load(Ordering::Relaxed)
     }
 
-    pub async fn logon(&self) -> Result<(), Error> {
+    pub async fn logon(&self, heartbeat: bool) -> Result<(), Error> {
         // res3et the seq
         self.seq.store(1, Ordering::Relaxed);
         self.send_message(LogonReq::new(Some(true))).await?;
@@ -248,25 +250,26 @@ impl FixApi {
                         };
                         let send_request_clone = send_request.clone();
 
-                        // TODO
-                        // let hb_interval = self.config.heart_beat as u64;
-                        //
-                        // let is_connected = self.is_connected.clone();
-                        //
-                        // send heartbeat per hb_interval
-                        // task::spawn(async move {
-                        //     let mut heartbeat_stream =
-                        //         stream::interval(Duration::from_secs(hb_interval));
-                        //
-                        //     while let Some(_) = heartbeat_stream.next().await {
-                        //         if !is_connected.load(Ordering::Relaxed) {
-                        //             break;
-                        //         }
-                        //         let req = HeartbeatReq::new(None);
-                        //         send_request(Box::new(req)).await;
-                        //         // log::debug!("Sent the heartbeat");
-                        //     }
-                        // });
+                        if heartbeat {
+                            let hb_interval = self.config.heart_beat as u64;
+
+                            let is_connected = self.is_connected.clone();
+
+                            //send heartbeat per hb_interval
+                            task::spawn(async move {
+                                let mut heartbeat_stream =
+                                    stream::interval(Duration::from_secs(hb_interval));
+
+                                while let Some(_) = heartbeat_stream.next().await {
+                                    if !is_connected.load(Ordering::Relaxed) {
+                                        break;
+                                    }
+                                    let req = HeartbeatReq::new(None);
+                                    send_request(Box::new(req)).await;
+                                    // log::debug!("Sent the heartbeat");
+                                }
+                            });
+                        }
 
                         //
                         // handle the responses

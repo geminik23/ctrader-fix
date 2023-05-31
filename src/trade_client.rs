@@ -118,7 +118,7 @@ impl TradeClient {
     pub async fn connect(&mut self) -> Result<(), Error> {
         self.register_internal_handler();
         self.internal.connect().await?;
-        self.internal.logon().await
+        self.internal.logon(false).await
     }
 
     pub async fn disconnect(&mut self) -> Result<(), Error> {

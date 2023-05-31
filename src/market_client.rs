@@ -410,10 +410,14 @@ impl MarketClient {
     pub async fn connect(&mut self) -> Result<(), Error> {
         // set market handler
         self.register_internal_handler();
+        self.spot_req_states.lock().await.clear();
+        self.depth_req_states.lock().await.clear();
+        self.spot_market_data.lock().await.clear();
+        self.depth_market_data.write().await.clear();
 
         // connection
         self.internal.connect().await?;
-        self.internal.logon().await
+        self.internal.logon(true).await
     }
 
     pub async fn disconnect(&mut self) -> Result<(), Error> {
