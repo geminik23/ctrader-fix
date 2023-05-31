@@ -171,7 +171,7 @@ pub trait RequestMessage: Send {
         let fields = vec![
             format_field(Field::MsgType, self.get_message_type()),
             format_field(Field::SenderCompID, &config.sender_comp_id),
-            format_field(Field::TargetCompID, "cServer"),
+            format_field(Field::TargetCompID, "CSERVER"),
             format_field(Field::TargetSubID, sub_id.to_string()),
             format_field(Field::SenderSubID, sub_id.to_string()),
             format_field(Field::MsgSeqNum, sequence_number),
@@ -202,6 +202,15 @@ pub trait RequestMessage: Send {
 pub struct LogonReq {
     pub encryption_scheme: i32,
     pub reset_seq_num: Option<bool>,
+}
+
+impl LogonReq {
+    pub fn new(reset_seq_num: Option<bool>) -> Self {
+        Self {
+            encryption_scheme: 0,
+            reset_seq_num,
+        }
+    }
 }
 
 impl RequestMessage for LogonReq {
@@ -334,7 +343,10 @@ impl RequestMessage for SequenceReset {
         let mut fields = vec![format_field(Field::NewSeqNo, self.new_seq_no)];
 
         if let Some(gap_fill_flag) = self.gap_fill_flag {
-            fields.push(format_field(Field::GapFillFlag, gap_fill_flag));
+            fields.push(format_field(
+                Field::GapFillFlag,
+                if gap_fill_flag { "Y" } else { "N" },
+            ));
         }
 
         Some(fields.join(delimiter))

@@ -1,24 +1,23 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::{
         atomic::{AtomicBool, AtomicU32, Ordering},
         Arc,
     },
-    time::Duration,
 };
 
 use async_std::{
     channel::{bounded, Receiver},
     io::{BufWriter, WriteExt},
     net::TcpStream,
-    stream::{self, StreamExt},
+    // stream::StreamExt,
     sync::RwLock,
     task,
 };
 
 use crate::types::{Config, Error, Field, InternalMDResult, SubID, DELIMITER};
 use crate::{
-    messages::{HeartbeatReq, LogonReq, LogoutReq, RequestMessage, ResponseMessage, TestReq},
+    messages::{HeartbeatReq, LogonReq, LogoutReq, RequestMessage, ResponseMessage},
     types::ConnectionHandler,
 };
 use crate::{
@@ -36,6 +35,9 @@ pub struct FixApi {
 
     res_receiver: Option<Receiver<ResponseMessage>>,
     pub container: Arc<RwLock<HashMap<String, Vec<ResponseMessage>>>>,
+
+    // ReqMessage Container
+    message_buffer: Arc<RwLock<VecDeque<(u32, String)>>>,
 
     //callback
     connection_handler: Option<Arc<dyn ConnectionHandler + Send + Sync>>,
@@ -66,6 +68,8 @@ impl FixApi {
             seq: Arc::new(AtomicU32::new(1)),
             container: Arc::new(RwLock::new(HashMap::new())),
             sub_id,
+
+            message_buffer: Arc::new(RwLock::new(VecDeque::new())),
             connection_handler: None,
             market_callback: None,
             trade_callback: None,
@@ -111,10 +115,12 @@ impl FixApi {
         self.stream = None;
         self.res_receiver = None;
         self.is_connected.store(false, Ordering::Relaxed);
+        self.message_buffer.write().await.clear();
         Ok(())
     }
 
     pub async fn connect(&mut self) -> Result<(), Error> {
+        self.message_buffer.write().await.clear();
         let (sender, receiver) = bounded(1);
         let mut socket = Socket::connect(
             self.config.host.as_str(),
@@ -153,6 +159,19 @@ impl FixApi {
         let no_seq = self.seq.fetch_add(1, Ordering::Relaxed);
         let req = req.build(self.sub_id, no_seq, DELIMITER, &self.config);
         if let Some(stream) = self.stream.clone() {
+            // FIXME
+            self.message_buffer
+                .write()
+                .await
+                .push_back((no_seq, req.clone()));
+            self.message_buffer
+                .write()
+                .await
+                .push_back((no_seq, req.clone()));
+            if self.message_buffer.read().await.len() > 10 {
+                self.message_buffer.write().await.pop_front();
+            }
+
             log::debug!("Send request : {}", req);
             let mut writer = BufWriter::new(stream.as_ref());
             writer.write_all(req.as_bytes()).await?;
@@ -166,9 +185,9 @@ impl FixApi {
     }
 
     pub async fn logon(&self) -> Result<(), Error> {
-        // TODO check the connected
-
-        self.send_message(LogonReq::default()).await?;
+        // res3et the seq
+        self.seq.store(1, Ordering::Relaxed);
+        self.send_message(LogonReq::new(Some(true))).await?;
 
         // wait to receive the response
         if let Some(recv) = &self.res_receiver {
@@ -189,21 +208,30 @@ impl FixApi {
                         let sub_id = self.sub_id;
                         let config = self.config.clone();
                         let seq = self.seq.clone();
+                        let msg_buffer = self.message_buffer.clone();
 
                         let send_request = move |req: Box<dyn RequestMessage>| {
                             let stream = stream.clone();
                             let sub_id = sub_id;
                             let config = config.clone();
                             let seq = seq.clone();
+                            let msg_buffer = msg_buffer.clone();
                             async move {
-                                let req = req.build(
-                                    sub_id,
-                                    seq.fetch_add(1, Ordering::Relaxed),
-                                    DELIMITER,
-                                    &config,
-                                );
+                                let msg_type = req.get_message_type();
+                                let no_seq = seq.fetch_add(1, Ordering::Relaxed);
+                                let req = req.build(sub_id, no_seq, DELIMITER, &config);
+
+                                // FIXME later
+                                msg_buffer.write().await.push_back((no_seq, req.clone()));
+                                if msg_buffer.read().await.len() > 10 {
+                                    msg_buffer.write().await.pop_front();
+                                }
 
                                 let mut writer = BufWriter::new(stream.as_ref());
+                                log::debug!(
+                                    "[Session:MsgType({msg_type})] Sending request: {}",
+                                    req
+                                );
                                 let _ = writer.write_all(req.as_bytes()).await;
 
                                 match writer.flush().await {
@@ -220,24 +248,25 @@ impl FixApi {
                         };
                         let send_request_clone = send_request.clone();
 
-                        let hb_interval = self.config.heart_beat as u64;
-
-                        let is_connected = self.is_connected.clone();
+                        // TODO
+                        // let hb_interval = self.config.heart_beat as u64;
+                        //
+                        // let is_connected = self.is_connected.clone();
                         //
                         // send heartbeat per hb_interval
-                        task::spawn(async move {
-                            let mut heartbeat_stream =
-                                stream::interval(Duration::from_secs(hb_interval));
-
-                            while let Some(_) = heartbeat_stream.next().await {
-                                if !is_connected.load(Ordering::Relaxed) {
-                                    break;
-                                }
-                                let req = HeartbeatReq::new(None);
-                                send_request(Box::new(req)).await;
-                                log::debug!("Sent the heartbeat");
-                            }
-                        });
+                        // task::spawn(async move {
+                        //     let mut heartbeat_stream =
+                        //         stream::interval(Duration::from_secs(hb_interval));
+                        //
+                        //     while let Some(_) = heartbeat_stream.next().await {
+                        //         if !is_connected.load(Ordering::Relaxed) {
+                        //             break;
+                        //         }
+                        //         let req = HeartbeatReq::new(None);
+                        //         send_request(Box::new(req)).await;
+                        //         // log::debug!("Sent the heartbeat");
+                        //     }
+                        // });
 
                         //
                         // handle the responses
@@ -247,6 +276,8 @@ impl FixApi {
                         let trade_callback = self.trade_callback.clone();
 
                         let is_connected = self.is_connected.clone();
+                        // let seq = self.seq.clone();
+                        let msg_buffer = self.message_buffer.clone();
                         task::spawn(async move {
                             while let Ok(res) = recv.recv().await {
                                 if !is_connected.load(Ordering::Relaxed) {
@@ -254,24 +285,82 @@ impl FixApi {
                                 }
 
                                 let msg_type = res.get_message_type();
+
+                                // Update the message sequence number
+                                // if let Some(seq_num) = res
+                                //     .get_field_value(Field::MsgSeqNum)
+                                //     .map(|v| v.parse::<u32>().ok().unwrap_or(0))
+                                // {
+                                //     if seq_num != 0 {
+                                //         seq.store(seq_num + 1, Ordering::Relaxed);
+                                //     }
+                                // }
                                 // notify? or send? via channel?
                                 match msg_type {
                                     "0" => {
-                                        log::debug!("Heartbeat received");
+                                        log::debug!(
+                                            "[Session:MsyType({msg_type})] Received Heartbeat"
+                                        );
+                                    }
+                                    "2" => {
+                                        log::debug!(
+                                            "[Session:MsyType({msg_type})] Received ResendRequest"
+                                        );
+                                        let begin = res
+                                            .get_field_value(Field::BeginSeqNo)
+                                            .map(|v| v.parse::<u32>().unwrap_or(0))
+                                            .unwrap();
+
+                                        let end = res
+                                            .get_field_value(Field::EndSeqNo)
+                                            .map(|v| v.parse::<u32>().unwrap_or(0))
+                                            .unwrap();
+
+                                        {
+                                            for msg in msg_buffer
+                                                .read()
+                                                .await
+                                                .iter()
+                                                .filter(|(no, _)| {
+                                                    if end == 0 {
+                                                        *no >= begin
+                                                    } else {
+                                                        *no >= begin && *no <= end
+                                                    }
+                                                })
+                                                .map(|(_, msg)| msg.clone())
+                                            {
+                                                let mut writer =
+                                                    BufWriter::new(stream_clone.as_ref());
+                                                log::debug!(
+                                                 "[Session:MsgType({msg_type})] Send ResendRequest: {}",
+                                                msg
+                                                );
+                                                let _ = writer.write_all(msg.as_bytes()).await;
+                                                break;
+                                            }
+                                        }
                                     }
                                     "5" => {
+                                        log::debug!(
+                                            "[Session:MsyType({msg_type})] Received Logged out"
+                                        );
                                         // 5 : logout
-                                        log::debug!("Logged out");
                                         //disconnect
                                         stream_clone.shutdown(std::net::Shutdown::Both).ok();
                                     }
                                     "1" => {
+                                        log::debug!(
+                                            "[Session:MsyType({msg_type})] Received TestRequest"
+                                        );
                                         // send back with test request id
                                         if let Some(test_req_id) =
                                             res.get_field_value(Field::TestReqID)
                                         {
-                                            send_request_clone(Box::new(TestReq::new(test_req_id)))
-                                                .await;
+                                            send_request_clone(Box::new(HeartbeatReq::new(Some(
+                                                test_req_id,
+                                            ))))
+                                            .await;
                                             log::debug!("Sent the heartbeat from test_req_id");
                                         }
                                     }

@@ -69,9 +69,14 @@ impl Socket {
                     // send itself.
                     ResponseMessage::new(&self.msg_buffer, DELIMITER)
                 } else {
+                    // } else if pos < self.msg_buffer.len() {
                     rest = Some(self.msg_buffer.split_off(pos));
                     ResponseMessage::new(&self.msg_buffer, DELIMITER)
                 };
+                // else {
+                //     println!("\n{:?}\n", self.msg_buffer);
+                //     break;
+                // };
 
                 log::debug!("Handle the response : {}", self.msg_buffer);
                 if let Err(err) = self.res_sender.send(res).await {
