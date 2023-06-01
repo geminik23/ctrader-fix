@@ -211,6 +211,8 @@ impl FixApi {
                         let config = self.config.clone();
                         let seq = self.seq.clone();
                         let msg_buffer = self.message_buffer.clone();
+                        let is_connected = self.is_connected.clone();
+                        let handler = self.connection_handler.clone();
 
                         let send_request = move |req: Box<dyn RequestMessage>| {
                             let stream = stream.clone();
@@ -218,10 +220,13 @@ impl FixApi {
                             let config = config.clone();
                             let seq = seq.clone();
                             let msg_buffer = msg_buffer.clone();
+                            let is_connected = is_connected.clone();
+                            let handler = handler.clone();
                             async move {
                                 let msg_type = req.get_message_type();
                                 let no_seq = seq.fetch_add(1, Ordering::Relaxed);
                                 let req = req.build(sub_id, no_seq, DELIMITER, &config);
+                                let handler = handler.clone();
 
                                 // FIXME later
                                 msg_buffer.write().await.push_back((no_seq, req.clone()));
@@ -239,11 +244,20 @@ impl FixApi {
                                 match writer.flush().await {
                                     Ok(_) => {}
                                     Err(err) => {
-                                        log::error!(
-                                            "Failed to send the heartbeat request - {:?}",
-                                            err
-                                        );
-                                        stream.shutdown(std::net::Shutdown::Both).unwrap();
+                                        log::error!("Failed to send the request - {:?}", err);
+                                        if let Err(err) = stream.shutdown(std::net::Shutdown::Both)
+                                        {
+                                            log::error!(
+                                                "Failed to shutdown the stream - {:?}",
+                                                err
+                                            );
+                                            is_connected.store(false, Ordering::Relaxed);
+                                            if let Some(handler) = handler {
+                                                task::spawn(async move {
+                                                    handler.on_disconnect().await;
+                                                });
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -266,7 +280,6 @@ impl FixApi {
                                     }
                                     let req = HeartbeatReq::new(None);
                                     send_request(Box::new(req)).await;
-                                    // log::debug!("Sent the heartbeat");
                                 }
                             });
                         }
@@ -289,15 +302,6 @@ impl FixApi {
 
                                 let msg_type = res.get_message_type();
 
-                                // Update the message sequence number
-                                // if let Some(seq_num) = res
-                                //     .get_field_value(Field::MsgSeqNum)
-                                //     .map(|v| v.parse::<u32>().ok().unwrap_or(0))
-                                // {
-                                //     if seq_num != 0 {
-                                //         seq.store(seq_num + 1, Ordering::Relaxed);
-                                //     }
-                                // }
                                 // notify? or send? via channel?
                                 match msg_type {
                                     "0" => {
