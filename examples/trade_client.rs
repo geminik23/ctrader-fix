@@ -46,7 +46,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     client.connect().await?;
     if client.is_connected() {
         let res = client.fetch_security_list().await?;
-        log::info!("Secutiry list - {:?}", res);
+        for symbolinfo in res.into_iter() {
+            println!("{:?}", symbolinfo);
+        }
+        // log::info!("Secutiry list - {:?}", res);
 
         // POSITIONS
         {
@@ -59,9 +62,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // ORDERS
         {
             // Fetch all orders
-            log::info!("Request fetch order mass");
-            let res = client.fetch_all_order_status(None).await?;
-            log::info!("Order mass - {:?}", res);
+            // log::info!("Request fetch order mass");
+            // let res = client.fetch_all_order_status(None).await?;
+            // log::info!("Order mass - {:?}", res);
         }
 
         { // Test : market order & (add more lot & close partially & closs position) with change_position

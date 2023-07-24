@@ -87,6 +87,14 @@ impl TradeClient {
         }
     }
 
+    pub fn get_timeout(&self) -> u64 {
+        self.timeout
+    }
+
+    pub fn set_timeout(&mut self, timeout: u64) {
+        self.timeout = timeout;
+    }
+
     pub fn register_trade_handler_arc<T: TradeDataHandler + Send + Sync + 'static>(
         &mut self,
         handler: Arc<T>,
