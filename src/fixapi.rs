@@ -245,13 +245,13 @@ impl FixApi {
                                     Ok(_) => {}
                                     Err(err) => {
                                         log::error!("Failed to send the request - {:?}", err);
+                                        is_connected.store(false, Ordering::Relaxed);
                                         if let Err(err) = stream.shutdown(std::net::Shutdown::Both)
                                         {
                                             log::error!(
                                                 "Failed to shutdown the stream - {:?}",
                                                 err
                                             );
-                                            is_connected.store(false, Ordering::Relaxed);
                                             if let Some(handler) = handler {
                                                 task::spawn(async move {
                                                     handler.on_disconnect().await;
