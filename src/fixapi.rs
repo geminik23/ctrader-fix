@@ -252,11 +252,11 @@ impl FixApi {
                                                 "Failed to shutdown the stream - {:?}",
                                                 err
                                             );
-                                            if let Some(handler) = handler {
-                                                task::spawn(async move {
-                                                    handler.on_disconnect().await;
-                                                });
-                                            }
+                                        }
+                                        if let Some(handler) = handler {
+                                            task::spawn(async move {
+                                                handler.on_disconnect().await;
+                                            });
                                         }
                                     }
                                 }
