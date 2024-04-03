@@ -328,7 +328,6 @@ pub struct SequenceReset {
     gap_fill_flag: Option<bool>,
     new_seq_no: u32,
 }
-
 impl SequenceReset {
     pub fn new(gap_fill_flag: Option<bool>, new_seq_no: u32) -> Self {
         Self {

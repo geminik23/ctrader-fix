@@ -16,6 +16,7 @@ pub trait ConnectionHandler {
     async fn on_disconnect(&self);
 }
 
+#[allow(unused_variables)]
 #[async_trait]
 pub trait MarketDataHandler {
     /// Called when a new price for a symbol is received.
@@ -538,20 +539,20 @@ impl Default for Side {
 #[repr(u32)]
 #[derive(Debug, PartialEq, TryFromPrimitive, Clone, Copy)]
 pub enum OrderType {
-    MARKET = 1,
-    LIMIT = 2,
-    STOP = 3,
-    STOP_LIMIT = 4,
+    Market = 1,
+    Limit = 2,
+    Stop = 3,
+    StopLimit = 4,
 }
 
 impl FromStr for OrderType {
     type Err = ParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "1" => Ok(Self::MARKET),
-            "2" => Ok(Self::LIMIT),
-            "3" => Ok(Self::STOP),
-            "4" => Ok(Self::STOP_LIMIT),
+            "1" => Ok(Self::Market),
+            "2" => Ok(Self::Limit),
+            "3" => Ok(Self::Stop),
+            "4" => Ok(Self::StopLimit),
             _ => Err(ParseError(s.into())),
         }
     }
@@ -559,6 +560,6 @@ impl FromStr for OrderType {
 
 impl Default for OrderType {
     fn default() -> Self {
-        OrderType::MARKET
+        OrderType::Market
     }
 }
