@@ -11,7 +11,7 @@ pub enum AlertSet {
 /// A `PriceAlert` struct for setting up price alerts on trading symbols.
 ///
 /// This struct allows to set high and low price alerts for specific trading symbols.
-/// Alerts are triggered based on the ask price of the symbol.
+/// Alerts are triggered based on the bid price of the symbol.
 pub struct PriceAlert {
     // For each symbol_id with its alert type (high or low)
     alert_price: HashMap<u32, HashMap<String, AlertSet>>,
