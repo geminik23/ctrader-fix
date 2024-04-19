@@ -49,6 +49,32 @@ pub trait MarketDataHandler {
     async fn on_rejected_depth_subscription(&self, symbol_id: u32, err_msg: String) {}
 }
 
+#[derive(Clone)]
+pub struct CTraderLogin {
+    pub username: String,
+    pub password: String,
+    pub server: String,
+    pub sendercompid: String,
+    pub heartbeat_interval: Option<u32>,
+}
+
+impl CTraderLogin {
+    pub fn new(
+        username: String,
+        password: String,
+        server: String,
+        sendercompid: String,
+        heartbeat_interval: Option<u32>,
+    ) -> Self {
+        Self {
+            username,
+            password,
+            server,
+            sendercompid,
+            heartbeat_interval,
+        }
+    }
+}
 #[async_trait]
 pub trait TradeDataHandler {
     async fn on_execution_report(&self, exec_report: ExecutionReport);

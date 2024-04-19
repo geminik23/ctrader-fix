@@ -6,19 +6,6 @@ Built using the async runtime library, it provides an asynchronous and simple in
 
 **This project is now ready for use. However, please note that it is still under active development and bugs may exist.**
 
-
-## Core Features
-
-### MarketClient
-
-### TradeClient
-
-
-## Utility Modules
-
-- **PriceAlert** \[[example](./examples/price_alert.rs)\] : With the `PriceAlert`, you can manage price alerts for specific trading instruments. 
-
-
 ## Cargo Features
 
 This crate allows you to use `tokio` runtime featured in `async-std` by specifying features in your `Cargo.toml`. By default, it uses `async-std` with the `attributes` feature. 
@@ -26,13 +13,13 @@ This crate allows you to use `tokio` runtime featured in `async-std` by specifyi
 To use the crate with the default configuration, add the following line to your `Cargo.toml`:
 
 ```toml
-ctrader-fix = "0.5.1"
+ctrader-fix = "0.5.2"
 ```
 
 To use a specific Tokio configuration, specify the feature like this:
 
 ```toml
-ctrader-fix = { version = "0.5.1", features = ["tokio1"] }
+ctrader-fix = { version = "0.5.2", features = ["tokio1"] }
 ```
 
 ### Available Features
@@ -49,6 +36,10 @@ Please note that you should only enable one of these features at a time.
 
 For details on the progress achieved, check the [PROGRESS.md](./PROGRESS.md) file.
 
+
+## Related Works
+
+- **quant-suite** [link](https://github.com/geminik23/quant-suite): Aimed at creating tools for auto-trading, back-testing, and market analysis. 
 
 ## License
 
