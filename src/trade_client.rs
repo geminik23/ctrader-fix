@@ -485,6 +485,7 @@ impl TradeClient {
     pub async fn close_position(
         &self,
         pos_report: PositionReport,
+        custom_ord_label: Option<String>,
     ) -> Result<ExecutionReport, Error> {
         self.adjust_position_size(
             pos_report.position_id,
@@ -499,6 +500,7 @@ impl TradeClient {
             } else {
                 Side::SELL
             },
+            custom_ord_label,
         )
         .await
     }
@@ -515,6 +517,7 @@ impl TradeClient {
         symbol_id: u32,
         lot: f64,
         side: Side,
+        custom_ord_label: Option<String>,
     ) -> Result<ExecutionReport, Error> {
         let req = NewOrderSingleReq::new(
             self.create_unique_id(),
@@ -527,7 +530,7 @@ impl TradeClient {
             None,
             None,
             Some(pos_id),
-            None,
+            custom_ord_label,
         );
 
         self.new_order(req).await
