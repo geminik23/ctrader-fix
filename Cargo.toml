@@ -1,6 +1,6 @@
 [package]
 name = "ctrader-fix"
-version = "0.5.3"
+version = "0.5.4"
 authors = ["Jaemin Kim <geminik23@gmail.com>"]
 edition = "2021"
 description = "A rust implementation of the cTrader FIX API."
