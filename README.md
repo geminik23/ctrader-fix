@@ -39,10 +39,8 @@ For details on the progress achieved, check the [PROGRESS.md](./PROGRESS.md) fil
 
 ## Related Works
 
-- **quant-suite** [link](https://github.com/geminik23/quant-suite): Aimed at creating tools for auto-trading, back-testing, and market analysis. 
+- **quant-system** [link](https://github.com/geminik23/quant-system): Aimed at creating tools for auto-trading, back-testing, and market analysis. 
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
-
-
